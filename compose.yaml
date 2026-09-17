@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+    environment:
+      STA_ENVIRONMENT: development
+      STA_LOG_FORMAT: json
+      STA_LOG_LEVEL: INFO
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=16m,mode=1777

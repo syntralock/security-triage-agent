@@ -1,0 +1,58 @@
+[
+  {
+    "alert_id": "alert-alex-signin",
+    "source": "synthetic-entra",
+    "source_severity": "LOW",
+    "title": "Synthetic unfamiliar sign-in resolved",
+    "description": "A synthetic sign-in from a documentation address matched the expected demonstration baseline.",
+    "occurred_at": "2026-01-15T11:45:00Z",
+    "detected_at": "2026-01-15T11:46:00Z",
+    "entities": [
+      {"entity_type": "USER", "identifier": "user-alex"},
+      {"entity_type": "DEVICE", "identifier": "device-alex-laptop"},
+      {"entity_type": "IP_ADDRESS", "identifier": "198.51.100.10"}
+    ],
+    "provider_schema_version": "1.0",
+    "original_payload": {
+      "reference_id": "payload-alert-alex-signin",
+      "payload_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "alert_id": "alert-riley-risk",
+    "source": "synthetic-defender",
+    "source_severity": "HIGH",
+    "title": "Synthetic privileged identity risk",
+    "description": "A synthetic privileged identity showed elevated risk and an MFA denial.",
+    "occurred_at": "2026-01-15T11:30:00Z",
+    "detected_at": "2026-01-15T11:31:00Z",
+    "entities": [
+      {"entity_type": "USER", "identifier": "user-riley"},
+      {"entity_type": "DEVICE", "identifier": "device-riley-admin"},
+      {"entity_type": "IP_ADDRESS", "identifier": "203.0.113.66"}
+    ],
+    "provider_schema_version": "1.0",
+    "original_payload": {
+      "reference_id": "payload-alert-riley-risk",
+      "payload_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  {
+    "alert_id": "alert-riley-mfa",
+    "source": "synthetic-entra",
+    "source_severity": "MEDIUM",
+    "title": "Synthetic denied MFA event",
+    "description": "A synthetic MFA denial was recorded for the privileged demonstration identity.",
+    "occurred_at": "2026-01-15T11:30:30Z",
+    "detected_at": "2026-01-15T11:32:00Z",
+    "entities": [
+      {"entity_type": "USER", "identifier": "user-riley"},
+      {"entity_type": "IP_ADDRESS", "identifier": "203.0.113.66"}
+    ],
+    "provider_schema_version": "1.0",
+    "original_payload": {
+      "reference_id": "payload-alert-riley-mfa",
+      "payload_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "user_id": "user-alex",
+    "risk_level": "LOW",
+    "risk_state": "NONE",
+    "observed_at": "2026-01-15T11:50:00Z",
+    "summary": "Synthetic baseline activity shows no elevated identity risk."
+  },
+  {
+    "user_id": "user-riley",
+    "risk_level": "HIGH",
+    "risk_state": "AT_RISK",
+    "observed_at": "2026-01-15T11:40:00Z",
+    "summary": "Synthetic risk record correlates a denied MFA event with an unfamiliar documentation-range address."
+  }
+]

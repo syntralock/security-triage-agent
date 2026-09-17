@@ -1,6 +1,6 @@
 # Proposed Repository Structure
 
-Status: approved target structure. Milestones 1–2 scaffold the foundation and domain subsets; later directories remain deferred to their owning milestones.
+Status: approved target structure. Milestones 1–3 scaffold the foundation, domain, and synthetic evidence-tool subsets; later directories remain deferred to their owning milestones.
 
 ```text
 security-triage-agent/
@@ -34,7 +34,10 @@ security-triage-agent/
 │   │   ├── states.py
 │   │   └── errors.py
 │   ├── application/
+│   │   ├── __init__.py
+│   │   ├── evidence_tools.py
 │   │   ├── ports/
+│   │   │   ├── __init__.py
 │   │   │   ├── reasoner.py
 │   │   │   ├── tools.py
 │   │   │   ├── repositories.py
@@ -46,6 +49,7 @@ security-triage-agent/
 │   │   ├── approval_service.py
 │   │   └── evaluation_service.py
 │   ├── adapters/
+│   │   ├── __init__.py
 │   │   ├── api/
 │   │   │   ├── app.py
 │   │   │   ├── routes/
@@ -59,7 +63,8 @@ security-triage-agent/
 │   │   │   ├── openai.py
 │   │   │   └── fake.py
 │   │   ├── tools/
-│   │   │   ├── registry.py
+│   │   │   ├── __init__.py
+│   │   │   ├── fixture_models.py
 │   │   │   └── fixtures.py
 │   │   ├── persistence/
 │   │   │   ├── models.py
@@ -71,15 +76,17 @@ security-triage-agent/
 │   ├── config.py
 │   └── logging.py
 ├── fixtures/
+│   ├── README.md
 │   ├── v1/
+│   │   ├── manifest.json
 │   │   ├── alerts/
 │   │   ├── identities.json
+│   │   ├── user_risk.json
 │   │   ├── signins.json
 │   │   ├── devices.json
 │   │   ├── ip_reputation.json
 │   │   ├── mfa_events.json
 │   │   └── related_alerts.json
-│   └── README.md
 ├── evaluations/
 │   ├── scenarios/
 │   ├── schema.json

@@ -1,0 +1,20 @@
+[
+  {
+    "user_id": "user-alex",
+    "display_name": "Synthetic Analyst Alex",
+    "principal_name": "alex@security-lab.example.test",
+    "role": "Synthetic Finance Analyst",
+    "enabled": true,
+    "privilege_level": "STANDARD",
+    "device_ids": ["device-alex-laptop"]
+  },
+  {
+    "user_id": "user-riley",
+    "display_name": "Synthetic Administrator Riley",
+    "principal_name": "riley@security-lab.example.test",
+    "role": "Synthetic Directory Administrator",
+    "enabled": true,
+    "privilege_level": "PRIVILEGED",
+    "device_ids": ["device-riley-admin"]
+  }
+]

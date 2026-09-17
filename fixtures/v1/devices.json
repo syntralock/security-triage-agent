@@ -1,0 +1,20 @@
+[
+  {
+    "device_id": "device-alex-laptop",
+    "display_name": "SYNTH-LAPTOP-01",
+    "operating_system": "SyntheticOS 1.0",
+    "compliance_state": "COMPLIANT",
+    "managed": true,
+    "last_seen_at": "2026-01-15T11:46:00Z",
+    "owner_user_ids": ["user-alex"]
+  },
+  {
+    "device_id": "device-riley-admin",
+    "display_name": "SYNTH-ADMIN-01",
+    "operating_system": "SyntheticOS 1.0",
+    "compliance_state": "NONCOMPLIANT",
+    "managed": true,
+    "last_seen_at": "2026-01-15T11:32:00Z",
+    "owner_user_ids": ["user-riley"]
+  }
+]

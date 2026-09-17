@@ -1,0 +1,42 @@
+[
+  {
+    "sign_in_id": "signin-alex-recent",
+    "user_id": "user-alex",
+    "device_id": "device-alex-laptop",
+    "ip_address": "198.51.100.10",
+    "occurred_at": "2026-01-15T11:45:00Z",
+    "status": "SUCCESS",
+    "authentication_method": "password-and-mfa",
+    "location": "Synthetic Office"
+  },
+  {
+    "sign_in_id": "signin-alex-old",
+    "user_id": "user-alex",
+    "device_id": "device-alex-laptop",
+    "ip_address": "192.0.2.20",
+    "occurred_at": "2026-01-14T10:00:00Z",
+    "status": "SUCCESS",
+    "authentication_method": "password-and-mfa",
+    "location": "Synthetic Remote Site"
+  },
+  {
+    "sign_in_id": "signin-riley-denied",
+    "user_id": "user-riley",
+    "device_id": "device-riley-admin",
+    "ip_address": "203.0.113.66",
+    "occurred_at": "2026-01-15T11:30:00Z",
+    "status": "FAILURE",
+    "authentication_method": "password-and-mfa",
+    "location": "Synthetic Unfamiliar Location"
+  },
+  {
+    "sign_in_id": "signin-riley-ipv6",
+    "user_id": "user-riley",
+    "device_id": "device-riley-admin",
+    "ip_address": "2001:db8::66",
+    "occurred_at": "2026-01-15T11:20:00Z",
+    "status": "SUCCESS",
+    "authentication_method": "password-and-mfa",
+    "location": "Synthetic Unfamiliar Location"
+  }
+]

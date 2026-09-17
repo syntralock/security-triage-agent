@@ -58,6 +58,7 @@ Initial remediation implementations must be simulation-only. If model reasoning 
 - Pin or constrain dependencies and review additions for necessity and maintenance risk.
 - Use database migrations for schema changes; do not mutate production schemas on application startup.
 - Make fixture tools deterministic: identical input and fixture version must produce identical output.
+- Load fixture versions explicitly and validate their schemas, unique identifiers, and cross-record references before use. Never repair or ignore invalid fixture data at runtime.
 - Avoid real external security-provider calls in tests. Unit and integration tests must run offline.
 - Keep the server-rendered UI thin. Security decisions belong in application services, never templates or browser code.
 

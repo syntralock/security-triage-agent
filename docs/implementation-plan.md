@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–2 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–3 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -31,6 +31,8 @@ Implement provider-neutral alert, entity, evidence, disposition, severity, triag
 **Acceptance:** all required triage output fields are represented and invalid domain states cannot be constructed through public interfaces.
 
 ## Milestone 3 — Synthetic data and evidence tool contracts
+
+**Status:** complete on 2026-09-17. Milestone 4 has not started and requires explicit approval.
 
 Create versioned synthetic fixtures, seven typed tool interfaces/adapters, registry metadata, and fixture validation. Document how data was synthesized.
 

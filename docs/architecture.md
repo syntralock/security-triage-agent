@@ -104,6 +104,10 @@ Tools implement a common typed interface with metadata: name, version, input sch
 
 The gateway validates arguments, confirms identifiers belong to the alert's allowed entity scope, enforces budgets and timeouts, invokes the adapter, validates output, redacts logged fields, and emits audit records. Fixture adapters read versioned, deterministic synthetic datasets. Returning “not found” is a typed result, not an exception-shaped ambiguity.
 
+Milestone 3 establishes the pre-gateway contract: each tool has an immutable typed request and response, static name/version/access/classification/timeout metadata, and a discriminated `FOUND | NOT_FOUND` outcome carrying tool and fixture provenance. Every initial adapter is read-only and classified `SYNTHETIC_DEMO`. Authorization, alert scope, budgets, and duplicate-call controls remain exclusively gateway responsibilities.
+
+Fixture `v1` owns a fixed reference time and recent-sign-in window, so collection does not depend on the wall clock. The dataset is validated as one coherent snapshot before adapter construction, including identifier uniqueness and identity/device/sign-in/IP/MFA/alert relationships. Fixture versions are selected explicitly and never upgraded implicitly.
+
 ### Deterministic policy engine
 
 Policy code receives the candidate assessment plus execution facts and produces an enforced result. It owns:

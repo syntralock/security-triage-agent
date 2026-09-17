@@ -1,0 +1,10 @@
+[
+  {
+    "user_id": "user-alex",
+    "alert_ids": ["alert-alex-signin"]
+  },
+  {
+    "user_id": "user-riley",
+    "alert_ids": ["alert-riley-risk", "alert-riley-mfa"]
+  }
+]

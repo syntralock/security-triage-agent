@@ -1,0 +1,26 @@
+[
+  {
+    "mfa_event_id": "mfa-alex-success",
+    "user_id": "user-alex",
+    "occurred_at": "2026-01-15T11:45:30Z",
+    "method": "authenticator-app",
+    "status": "SUCCESS",
+    "source_sign_in_id": "signin-alex-recent"
+  },
+  {
+    "mfa_event_id": "mfa-riley-denied",
+    "user_id": "user-riley",
+    "occurred_at": "2026-01-15T11:30:30Z",
+    "method": "authenticator-app",
+    "status": "DENIED",
+    "source_sign_in_id": "signin-riley-denied"
+  },
+  {
+    "mfa_event_id": "mfa-riley-success",
+    "user_id": "user-riley",
+    "occurred_at": "2026-01-15T11:20:30Z",
+    "method": "hardware-key",
+    "status": "SUCCESS",
+    "source_sign_in_id": "signin-riley-ipv6"
+  }
+]

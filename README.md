@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-The architecture is approved and Milestone 1 (project foundation) is in progress. No alert domain, triage, evidence-tool, agent, persistence, approval, or remediation behavior has been implemented.
+Milestones 0–2 are complete through the provider-neutral domain contracts. Evidence tools, agent orchestration, policy, persistence, provider integrations, approval services, and remediation behavior have not been implemented.
 
 - [Proposed architecture](docs/architecture.md)
 - [Proposed repository structure](docs/repository-structure.md)

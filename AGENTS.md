@@ -28,7 +28,7 @@ The repository must use synthetic demonstration data only. Never add real corpor
 - Do not place secrets or sensitive configuration in prompts, logs, fixtures, API responses, error messages, or audit payloads.
 - All state-changing response actions pass through a central action catalog and policy engine.
 - Account disablement, session revocation, password reset, device isolation, email deletion, and privilege removal always require explicit, recorded human approval. An agent must never approve its own action.
-- Approval must be bound to the exact transaction, action type, target, parameters, policy version, and expiry. Any material change invalidates approval.
+- An approval decision must be bound to the exact transaction, action type, target, parameters, and policy version. Granted approval also requires an expiry; rejection must not have an expiry. Any material action change invalidates approval.
 - Execute an approved action only through a dedicated action executor that rechecks authorization and approval immediately before execution.
 - Deny unknown tools, actions, dispositions, severities, and policy values by default.
 - Do not silently fall back from a failed policy, validation, or audit write. Fail closed and surface a reviewable error.

@@ -122,7 +122,7 @@ The policy version is persisted on every execution. Initially policy can be ordi
 
 Recommendations use stable action identifiers, typed target/parameters, and human-readable rationale. A central catalog assigns each action a risk level and approval requirement. The six named high-impact actions are always approval-required.
 
-Approval is a separate workflow and durable record with reviewer identity, decision, timestamp, reason, policy version, expiry, and a digest of the exact action request. The executor revalidates all of these immediately before running. Initially, use a `NoOpActionExecutor` or synthetic simulator so the project demonstrates the boundary without touching real systems.
+Approval is a separate workflow and durable record with reviewer identity, decision, timestamp, reason, policy version, and a digest of the exact action request. An approved decision requires an expiry defining the lifetime of granted authorization; a rejected decision must not have an expiry because no authorization was granted. The executor revalidates the action binding, policy, authorization, and expiry immediately before running. Initially, use a `NoOpActionExecutor` or synthetic simulator so the project demonstrates the boundary without touching real systems.
 
 Recommended state flow:
 
@@ -169,6 +169,18 @@ The API result is a strict Pydantic model containing:
 - `timestamp`: UTC and timezone-aware
 
 Do not request or store private chain-of-thought. The reasoning summary should cite evidence references and decision factors sufficient for a reviewer to understand the outcome.
+
+### Domain contract decisions
+
+- Domain models are immutable, reject unknown fields, and contain no framework, persistence, provider, network, filesystem, or execution behavior.
+- Aware timestamps in any timezone are accepted at construction and normalized to UTC; naive timestamps are rejected.
+- Confidence is represented as `Decimal`, preserving supplied precision across domain serialization round trips.
+- Alert scope uses discriminated user, device, and IP-address references. IP addresses are normalized by value.
+- Evidence may originate from a tool or another source such as the source alert. Tool-origin evidence must reference a tool call included in the same triage result.
+- Action parameters are structured JSON values and are deep-frozen after validation. The action digest is SHA-256 over canonical JSON containing the catalog action identifier, normalized target, and parameters. Action ID and reviewer-facing rationale are intentionally outside the digest; approvals bind both the stable action ID and digest.
+- `actions_requiring_approval` contains typed action ID/digest references and may only reference matching recommended actions. Policy—not an action proposal—will decide which actions require approval in Milestone 6.
+- Lifecycle transition methods return new immutable state objects and reject transitions not listed in the approved state maps.
+- Approved decisions require a future expiry and may later transition to `EXPIRED`. Rejected decisions have no expiry while preserving the reviewer, decision time, reason, policy version, and action binding as immutable historical facts.
 
 ## 4. Security and architectural decisions
 

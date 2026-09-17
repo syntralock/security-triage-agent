@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestone 1 is authorized; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–2 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -21,6 +21,8 @@ Create the Python 3.12 package, dependency/tool configuration, environment setti
 **Acceptance:** a fresh checkout can run formatting, linting, type checking, and tests without network credentials; no triage behavior yet.
 
 ## Milestone 2 — Domain contracts
+
+**Status:** complete on 2026-09-17. Milestone 3 has not started and requires explicit approval.
 
 Implement provider-neutral alert, entity, evidence, disposition, severity, triage-result, action, approval, and execution-state models. Specify invariants and serialization contracts.
 

@@ -1,6 +1,6 @@
 # Proposed Repository Structure
 
-Status: approved target structure. Milestone 1 scaffolds only the foundation subset; later directories remain deferred to their owning milestones.
+Status: approved target structure. Milestones 1–2 scaffold the foundation and domain subsets; later directories remain deferred to their owning milestones.
 
 ```text
 security-triage-agent/
@@ -23,11 +23,15 @@ security-triage-agent/
 ├── src/security_triage_agent/
 │   ├── __init__.py
 │   ├── domain/
+│   │   ├── __init__.py
+│   │   ├── _base.py
 │   │   ├── alerts.py
 │   │   ├── triage.py
 │   │   ├── evidence.py
+│   │   ├── entities.py
 │   │   ├── actions.py
 │   │   ├── approvals.py
+│   │   ├── states.py
 │   │   └── errors.py
 │   ├── application/
 │   │   ├── ports/

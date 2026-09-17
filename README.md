@@ -4,7 +4,15 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–4 are complete through the deterministic synthetic evidence environment and its closed tool-gateway security boundary. Agent orchestration, policy, persistence, real provider integrations, approval services, and remediation behavior have not been implemented.
+Milestones 0–5 are complete through the deterministic synthetic evidence environment, closed tool-gateway boundary, and transactional SQLAlchemy/Alembic persistence. Agent orchestration, policy, real provider integrations, approval services, and remediation behavior have not been implemented.
+
+For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
+
+```bash
+.venv/bin/python -m alembic upgrade head
+```
+
+Application startup never creates or mutates the schema automatically.
 
 - [Proposed architecture](docs/architecture.md)
 - [Proposed repository structure](docs/repository-structure.md)

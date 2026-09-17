@@ -163,6 +163,14 @@ Use SQLAlchemy 2.x mappings and explicit repositories/unit-of-work boundaries. U
 
 Normalized tables support queries while append-only audit events support reconstruction. Audit writes belong in the same database transaction as the state change they describe. For future external event export, add an outbox rather than dual-writing. Database constraints should enforce important uniqueness and transition-related invariants where feasible.
 
+Milestone 5 implements these records with SQLAlchemy 2.x adapters behind narrow repository ports. ORM mappings remain in `adapters/persistence`; domain and application contracts contain no SQLAlchemy types. Material immutable contracts are serialized as structured JSON for exact reconstruction while query-critical values—including source and assessed severity, state, identifiers, timestamps, and confidence—also have normalized columns. Confidence uses `NUMERIC(38, 18)`. UTC timestamps use bounded ISO 8601 text so SQLite cannot discard timezone information; domain reconstruction validates and normalizes them back to aware UTC values. These portable SQL/JSON/numeric choices also work on PostgreSQL, although PostgreSQL integration testing remains release-hardening work.
+
+`SqlAlchemyUnitOfWork` owns one session and transaction. Repositories stage records but never commit. An explicit flush can order dependent records without ending atomicity; commit failure is sanitized and rolls back. A state change and its audit event therefore share one commit or one rollback. The audit repository exposes append and query operations only—no update or delete API—and audit payloads are structured, schema-versioned, and bounded to 16 KiB.
+
+Alembic revision `0001_initial_persistence` is the sole production schema-creation path. Local development defaults to `sqlite:///security-triage-agent.db`; operators run `python -m alembic upgrade head`, and CI verifies both a real fresh SQLite upgrade and offline migration rendering. `Base.metadata.create_all()` is not used by application startup or migration tests.
+
+Append-only here is an application interface property, not cryptographic immutability. A database administrator or compromised process can modify SQLite directly. Hash chaining, signed export, immutable external storage, and an outbox remain compatible future hardening options and are intentionally not implemented now.
+
 ## 3. Triage result contract
 
 The API result is a strict Pydantic model containing:

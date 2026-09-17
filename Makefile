@@ -1,24 +1,27 @@
 PYTHON ?= python3
 
-.PHONY: install format format-check lint typecheck test fixtures dependencies security check container-smoke
+.PHONY: install format format-check lint typecheck test migrations fixtures dependencies security check container-smoke
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
 
 format:
-	$(PYTHON) -m ruff format src tests scripts
+	$(PYTHON) -m ruff format src tests scripts migrations
 
 format-check:
-	$(PYTHON) -m ruff format --check src tests scripts
+	$(PYTHON) -m ruff format --check src tests scripts migrations
 
 lint:
-	$(PYTHON) -m ruff check src tests scripts
+	$(PYTHON) -m ruff check src tests scripts migrations
 
 typecheck:
-	$(PYTHON) -m mypy src tests
+	$(PYTHON) -m mypy
 
 test:
 	$(PYTHON) -m pytest
+
+migrations:
+	$(PYTHON) -m alembic upgrade head --sql >/dev/null
 
 fixtures:
 	PYTHONPATH=src $(PYTHON) scripts/verify_fixtures.py fixtures/v1
@@ -30,7 +33,7 @@ security:
 	$(PYTHON) -m bandit -c pyproject.toml -r src
 	$(PYTHON) -m detect_secrets.pre_commit_hook --baseline .secrets.baseline $$(git ls-files --cached --others --exclude-standard)
 
-check: format-check lint typecheck test fixtures dependencies security
+check: format-check lint typecheck test migrations fixtures dependencies security
 
 container-smoke:
 	docker compose build app

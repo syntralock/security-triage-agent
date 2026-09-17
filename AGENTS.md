@@ -58,6 +58,8 @@ Initial remediation implementations must be simulation-only. If model reasoning 
 - Read configuration from environment variables through one typed settings module. Commit `.env.example`, never `.env` or credentials.
 - Pin or constrain dependencies and review additions for necessity and maintenance risk.
 - Use database migrations for schema changes; do not mutate production schemas on application startup.
+- Keep commits at the Unit of Work boundary. Repository methods may stage or flush records but must not independently commit state or audit writes.
+- Audit repositories are append-only at the application interface; do not add ordinary update or delete methods for historical events.
 - Make fixture tools deterministic: identical input and fixture version must produce identical output.
 - Load fixture versions explicitly and validate their schemas, unique identifiers, and cross-record references before use. Never repair or ignore invalid fixture data at runtime.
 - Avoid real external security-provider calls in tests. Unit and integration tests must run offline.

@@ -4,6 +4,8 @@ Status: approved baseline. Revisit this document whenever a trust boundary, exte
 
 Milestone 4 implements trust boundaries 4 and 5 for the initial synthetic evidence tools: a closed read-only registry, exact request/output validation, alert-derived entity scope, deterministic call budgets and duplicate denial, bounded input/output, timeouts, sanitized failures, and one in-memory invocation record per attempt. Durable storage of those records remains Milestone 5 work.
 
+Milestone 5 implements trust boundary 6 with parameterized SQLAlchemy repositories, database constraints, explicit Unit of Work transactions, sanitized persistence failures, versioned migrations, bounded structured audit payloads, and append-only repository semantics. SQLite audit data is not tamper-proof against an administrator or compromised process.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

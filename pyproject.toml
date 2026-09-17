@@ -16,7 +16,9 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "alembic>=1.16,<2",
   "pydantic-settings>=2.10,<3",
+  "sqlalchemy>=2.0.41,<3",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +55,7 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "migrations"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]

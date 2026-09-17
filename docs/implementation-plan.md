@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–4 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–5 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -51,6 +51,8 @@ Implement allowlisting, strict argument parsing, alert-entity scoping, read-only
 **Acceptance:** no tool adapter can be invoked except through validated gateway rules, and every attempt has a structured outcome.
 
 ## Milestone 5 — Persistence and durable audit
+
+**Status:** complete on 2026-09-17. Milestone 6 has not started and requires explicit approval.
 
 Add SQLAlchemy models, repositories, unit of work, initial Alembic migration, SQLite configuration, and append-only audit records for alerts, executions, and tool calls.
 

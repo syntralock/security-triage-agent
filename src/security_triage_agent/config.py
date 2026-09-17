@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     service_name: str = Field(default="security-triage-agent", min_length=1, max_length=80)
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_format: Literal["json", "console"] = "json"
+    database_url: str = Field(default="sqlite:///security-triage-agent.db", min_length=1)
 
 
 @lru_cache(maxsize=1)

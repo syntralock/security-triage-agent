@@ -2,6 +2,8 @@
 
 Status: approved baseline. Revisit this document whenever a trust boundary, external integration, action type, or deployment model changes.
 
+Milestone 4 implements trust boundaries 4 and 5 for the initial synthetic evidence tools: a closed read-only registry, exact request/output validation, alert-derived entity scope, deterministic call budgets and duplicate denial, bounded input/output, timeouts, sanitized failures, and one in-memory invocation record per attempt. Durable storage of those records remains Milestone 5 work.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

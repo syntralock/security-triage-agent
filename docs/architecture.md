@@ -108,6 +108,14 @@ Milestone 3 establishes the pre-gateway contract: each tool has an immutable typ
 
 Fixture `v1` owns a fixed reference time and recent-sign-in window, so collection does not depend on the wall clock. The dataset is validated as one coherent snapshot before adapter construction, including identifier uniqueness and identity/device/sign-in/IP/MFA/alert relationships. Fixture versions are selected explicitly and never upgraded implicitly.
 
+Milestone 4 makes this boundary executable. `ToolRegistry` is an immutable mapping whose allowlist contains exactly the seven approved evidence-tool identities. Trusted composition code supplies implementations; untrusted requests can only look up a name and cannot register or resolve a callable. Registration rejects unknown identities, duplicate names, state-changing capability, and invalid timeouts.
+
+`ToolGateway` receives an untrusted `ProposedToolRequest` and a trusted `ToolExecutionContext`. The context contains alert-derived normalized entity keys, fixed execution budgets, correlation identifiers, duplicate-call state, and an in-memory invocation-record sink. Exact Pydantic request validation, including rejection of extra fields, occurs before authorization. User, device, and canonical IP arguments must match the established alert scope; fixture existence never grants access. Calls are fingerprinted from tool identity plus canonical validated JSON arguments. The first permitted call consumes total and per-tool budget; a repeated fingerprint is denied rather than cached or re-executed.
+
+Input and output byte limits are measured over deterministic compact JSON. Adapter execution is bounded by the lesser of immutable tool metadata and the trusted gateway timeout cap. Outcomes are validated again against the registered response contract and returned in a sanitized gateway envelope. Every attempted invocation produces a structured in-memory record for Milestone 5 persistence; internal exception details are not returned.
+
+The current timeout wrapper is intentionally minimal for synchronous deterministic fixtures. A timed-out Python thread cannot be forcibly terminated, so future network-backed adapters must use cancellation-aware I/O and an asynchronous or process-isolated execution mechanism before registration. No network adapter is enabled in this milestone.
+
 ### Deterministic policy engine
 
 Policy code receives the candidate assessment plus execution facts and produces an enforced result. It owns:

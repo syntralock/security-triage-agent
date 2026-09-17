@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–3 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–4 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -41,6 +41,8 @@ Create versioned synthetic fixtures, seven typed tool interfaces/adapters, regis
 **Acceptance:** identical input plus fixture version gives identical typed output; fixtures contain no real data.
 
 ## Milestone 4 — Tool gateway security boundary
+
+**Status:** complete on 2026-09-17. Milestone 5 has not started and requires explicit approval.
 
 Implement allowlisting, strict argument parsing, alert-entity scoping, read-only enforcement, budgets, duplicate-call handling, timeouts, sanitized result envelopes, and audit hooks using in-memory fakes.
 

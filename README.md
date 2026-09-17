@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–3 are complete through the deterministic synthetic evidence environment. The tool gateway, authorization, agent orchestration, policy, persistence, real provider integrations, approval services, and remediation behavior have not been implemented.
+Milestones 0–4 are complete through the deterministic synthetic evidence environment and its closed tool-gateway security boundary. Agent orchestration, policy, persistence, real provider integrations, approval services, and remediation behavior have not been implemented.
 
 - [Proposed architecture](docs/architecture.md)
 - [Proposed repository structure](docs/repository-structure.md)

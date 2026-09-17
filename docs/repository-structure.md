@@ -36,6 +36,8 @@ security-triage-agent/
 │   ├── application/
 │   │   ├── __init__.py
 │   │   ├── evidence_tools.py
+│   │   ├── tool_registry.py
+│   │   ├── tool_gateway.py
 │   │   ├── ports/
 │   │   │   ├── __init__.py
 │   │   │   ├── reasoner.py

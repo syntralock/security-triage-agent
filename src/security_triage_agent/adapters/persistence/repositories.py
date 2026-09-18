@@ -52,6 +52,12 @@ class SqlAlchemyAlertRepository:
         row = self._session.get(AlertRow, alert_id)
         return SecurityAlert.model_validate(row.domain_data) if row else None
 
+    def list_recent(self, limit: int = 100) -> tuple[SecurityAlert, ...]:
+        rows = self._session.scalars(
+            select(AlertRow).order_by(AlertRow.detected_at.desc(), AlertRow.alert_id).limit(limit)
+        )
+        return tuple(SecurityAlert.model_validate(row.domain_data) for row in rows)
+
 
 class SqlAlchemyExecutionRepository:
     def __init__(self, session: Session) -> None:
@@ -101,6 +107,28 @@ class SqlAlchemyExecutionRepository:
         row.state = execution.state.value
         row.updated_at = execution.updated_at.isoformat()
         row.failure_category = execution.failure_category
+
+    def list_for_alert(self, alert_id: str) -> tuple[TriageExecutionRecord, ...]:
+        rows = self._session.scalars(
+            select(TriageExecutionRow)
+            .where(TriageExecutionRow.alert_id == alert_id)
+            .order_by(TriageExecutionRow.created_at.desc(), TriageExecutionRow.execution_id)
+        )
+        return tuple(
+            TriageExecutionRecord.model_validate(
+                {
+                    "execution_id": row.execution_id,
+                    "alert_id": row.alert_id,
+                    "state": row.state,
+                    "idempotency_key": row.idempotency_key,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                    "predecessor_execution_id": row.predecessor_execution_id,
+                    "failure_category": row.failure_category,
+                }
+            )
+            for row in rows
+        )
 
 
 class SqlAlchemyToolInvocationRepository:

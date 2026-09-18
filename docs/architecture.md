@@ -2,6 +2,14 @@
 
 Status: approved on 2026-09-17. Milestone implementation remains gated by `docs/implementation-plan.md`.
 
+Milestone 8 realizes the transport boundary as a deliberately small FastAPI adapter. `bootstrap.py` is the sole trusted composition root and selects configuration, SQLAlchemy Unit of Work, fixture version, the seven-tool registry, gateway limits, policy/catalog, deterministic demo reasoner, clock/identifiers, principal provider, and routes. Request data cannot select implementations. Schema migration remains an explicit Alembic operator step; application startup never calls `create_all` or upgrades the database.
+
+The JSON API accepts one strict provider-neutral `SecurityAlert`, durably records it with ingestion audit, and invokes triage only through `TriageOrchestrator`. Duplicate identical alerts are idempotent and conflicting reuse of an alert identifier is rejected. The empty triage command schema prevents clients from submitting tools, reasoners, result fields, policy versions, approvals, execution claims, fixture paths, or database configuration.
+
+The current `DevelopmentPrincipalProvider` returns one fixed synthetic analyst behind a replaceable principal port. Route authorization distinguishes viewing from ingest/triage authority. It is intentionally not an identity provider: production composition fails closed, and tenant-grade object authorization remains deferred. Health is process-local; readiness performs a bounded persistence read without returning configuration.
+
+Server-rendered Jinja pages are read-only and autoescaped. They present source and assessed severity separately, model-reported confidence as non-calibrated presentation data, escalation, policy metadata, evidence provenance, tool attempts, catalog-owned action risk/approval/execution support, and the durable audit timeline. They contain no approval or action controls. Because there is no cookie authentication and no browser mutation route, Milestone 8 has no CSRF token; all mutations are JSON API POSTs and no unsafe GET mutation exists. Any future cookie-authenticated browser mutation must add CSRF protection before it is enabled.
+
 ## 1. Requirements analysis
 
 The product is a case-processing system, not a conversational assistant. Its primary unit of work is a triage execution against one normalized synthetic alert. A successful execution gathers bounded evidence, produces a typed assessment, passes that assessment through deterministic policy, and persists enough information to reconstruct what happened.

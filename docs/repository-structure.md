@@ -1,6 +1,6 @@
 # Proposed Repository Structure
 
-Status: approved target structure. Milestones 1–3 scaffold the foundation, domain, and synthetic evidence-tool subsets; later directories remain deferred to their owning milestones.
+Status: approved structure, updated through Milestone 8. Later directories remain deferred to their owning milestones.
 
 ```text
 security-triage-agent/
@@ -49,8 +49,7 @@ security-triage-agent/
 │   │   │   ├── repositories.py
 │   │   │   ├── clock.py
 │   │   │   └── executors.py
-│   │   ├── triage_service.py
-│   │   ├── orchestrator.py
+│   │   ├── alert_service.py
 │   │   ├── policy.py
 │   │   ├── approval_service.py
 │   │   └── evaluation_service.py
@@ -58,14 +57,13 @@ security-triage-agent/
 │   │   ├── __init__.py
 │   │   ├── api/
 │   │   │   ├── app.py
-│   │   │   ├── routes/
-│   │   │   ├── schemas/
 │   │   │   └── templates/
 │   │   ├── alerts/
 │   │   │   ├── sentinel.py
 │   │   │   ├── defender.py
 │   │   │   └── entra.py
 │   │   ├── reasoners/
+│   │   │   ├── demo.py
 │   │   │   └── fake.py
 │   │   ├── tools/
 │   │   │   ├── __init__.py

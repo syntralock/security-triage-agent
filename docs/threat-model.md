@@ -10,6 +10,8 @@ Milestone 6 makes action and post-reasoning policy metadata code-owned and immut
 
 Milestone 7 confines reasoner authority to typed proposals over a data-only context. The orchestrator owns iteration/deadline/context bounds, gateway routing, current-execution evidence references, policy invocation, lifecycle, idempotency, and transactional audit. Fabricated or cross-execution references and candidate claims of approval/execution fail safely. The deterministic fake has no network or provider dependency.
 
+Milestone 8 exposes those services through FastAPI without moving authority into routes or templates. A trusted composition root selects the database, fixture set, tool registry, policy, gateway, and deterministic demo reasoner. HTTP bodies cannot select these dependencies or claim a principal, policy result, approval, or execution. A fixed development-only principal crosses an explicit authorization interface, and production configuration refuses to use it. JSON inputs are strict and size-limited, errors are sanitized, templates autoescape untrusted content, and the browser UI is read-only. There are no cookies or browser state-changing operations in this milestone; API mutations are POST-only and CORS is not enabled. Production identity, tenant isolation, rate limiting, and CSRF protection for any future cookie-authenticated mutation remain deferred controls.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

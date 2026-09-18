@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ alert.alert_id }} · Security Triage Agent{% endblock %}
+{% block content %}
+<h2>{{ alert.title }}</h2>
+<dl>
+  <dt>Alert ID</dt><dd><code>{{ alert.alert_id }}</code></dd>
+  <dt>Source severity</dt><dd>{{ alert.source_severity.value }}</dd>
+  <dt>Source</dt><dd>{{ alert.source }}</dd>
+  <dt>Description</dt><dd>{{ alert.description }}</dd>
+  <dt>Provider schema</dt><dd>{{ alert.provider_schema_version }}</dd>
+</dl>
+<h3>Executions</h3>
+<ul>{% for item in executions %}<li><a href="/executions/{{ item.execution_id }}">{{ item.execution_id }}</a> — {{ item.state.value }}</li>{% else %}<li>No triage execution yet.</li>{% endfor %}</ul>
+<p>Triage initiation is available only through the authenticated API. This read-only UI performs no mutation.</p>
+{% endblock %}

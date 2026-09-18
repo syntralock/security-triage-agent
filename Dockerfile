@@ -9,6 +9,9 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY fixtures ./fixtures
+COPY alembic.ini ./
+COPY migrations ./migrations
 
 RUN python -m pip install --root-user-action=ignore . \
     && groupadd --system --gid 10001 app \

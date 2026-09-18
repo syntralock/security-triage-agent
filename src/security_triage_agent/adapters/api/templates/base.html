@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Security Triage Agent{% endblock %}</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 72rem; margin: 0 auto; padding: 1.5rem; line-height: 1.5; }
+    header { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid #888; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; vertical-align: top; padding: .5rem; border-bottom: 1px solid #777; }
+    .notice { padding: .75rem; border: 1px solid #b8860b; background: #fff3cd; color: #332701; }
+    .critical { font-weight: 700; }
+    code, pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    section { margin-block: 1.5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="/">Security Triage Agent</a></h1>
+    <p>Development principal: {{ principal.principal_id }}</p>
+  </header>
+  <p class="notice">Synthetic demonstration data only. No response action can execute.</p>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

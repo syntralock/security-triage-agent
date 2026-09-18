@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ execution.execution_id }} · Security Triage Agent{% endblock %}
+{% block content %}
+<h2>Execution <code>{{ execution.execution_id }}</code></h2>
+<p>State: <strong>{{ execution.state }}</strong></p>
+{% if result %}
+<section><h3>Assessment</h3>
+  <dl><dt>Disposition</dt><dd>{{ result.disposition }}</dd>
+  <dt>Source severity</dt><dd>{{ source_severity }} — <a href="/alerts/{{ result.alert_id }}">view source alert</a></dd>
+  <dt>Assessed severity</dt><dd>{{ result.severity }}</dd>
+  <dt>Model-reported confidence</dt><dd>{{ result.confidence }} (presentation only; not calibrated)</dd>
+  <dt>Escalation</dt><dd>{{ result.escalation_required }}{% if result.escalation_reason %}: {{ result.escalation_reason }}{% endif %}</dd>
+  <dt>Reasoning summary</dt><dd>{{ result.reasoning_summary }}</dd></dl>
+</section>
+<section><h3>Policy decision</h3><pre>{{ policy | tojson(indent=2) }}</pre></section>
+<section><h3>Evidence provenance</h3><table><thead><tr><th>ID</th><th>Source</th><th>Version</th><th>Summary</th></tr></thead><tbody>
+{% for item in result.evidence %}<tr><td>{{ item.evidence_id }}</td><td>{{ item.source_type }} / {{ item.source_reference }}</td><td>{{ item.source_version }}</td><td>{{ item.summary }}</td></tr>{% else %}<tr><td colspan="4">No evidence.</td></tr>{% endfor %}
+</tbody></table></section>
+<section><h3>Recommended actions</h3><table><thead><tr><th>Action</th><th>Target</th><th>Risk</th><th>Approval</th><th>Execution</th></tr></thead><tbody>
+{% for action in actions %}<tr><td>{{ action.catalog_action_id }}<br>{{ action.rationale }}</td><td>{{ action.target.identifier }}</td><td>{{ action.risk }}</td><td>{% if action.approval_required %}<strong>REQUIRED</strong>{% else %}Not required{% endif %}</td><td>{{ action.execution_support }}</td></tr>{% else %}<tr><td colspan="5">No recommended actions.</td></tr>{% endfor %}
+</tbody></table><p>No approval or execution controls are available in this milestone.</p></section>
+{% endif %}
+<section><h3>Tool attempts</h3><table><thead><tr><th>Call</th><th>Tool</th><th>Authorization</th><th>Outcome</th></tr></thead><tbody>
+{% for item in tools %}<tr><td>{{ item.call_id }}</td><td>{{ item.tool_name }}</td><td>{{ item.authorization }}</td><td>{{ item.outcome }}</td></tr>{% else %}<tr><td colspan="4">No tool attempts.</td></tr>{% endfor %}</tbody></table></section>
+<section><h3>Audit timeline</h3><ol>{% for item in audit %}<li>{{ item.occurred_at }} — {{ item.event_type }} — {{ item.outcome }}<pre>{{ item.data | tojson }}</pre></li>{% else %}<li>No audit events.</li>{% endfor %}</ol></section>
+{% endblock %}

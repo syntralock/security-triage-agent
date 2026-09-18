@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–7 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–8 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -81,6 +81,8 @@ Implement the `AgentReasoner` port, deterministic fake, bounded state machine, c
 **Acceptance:** deterministic scenarios produce complete typed results and audit histories without any model or external service.
 
 ## Milestone 8 — Ingestion API and minimal review UI
+
+**Status:** complete on 2026-09-18. Milestone 9 has not started and requires explicit approval.
 
 Add FastAPI routes for provider-specific ingestion, execution status/result/audit views, and thin server-rendered pages. Use an explicit synthetic development principal through an authorization interface.
 

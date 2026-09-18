@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     log_format: Literal["json", "console"] = "json"
     database_url: str = Field(default="sqlite:///security-triage-agent.db", min_length=1)
+    fixture_path: str = Field(default="fixtures/v1", min_length=1)
+    max_request_bytes: int = Field(default=65_536, ge=1_024, le=1_000_000)
 
 
 @lru_cache(maxsize=1)

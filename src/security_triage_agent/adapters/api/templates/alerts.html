@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Alerts · Security Triage Agent{% endblock %}
+{% block content %}
+<h2>Alerts</h2>
+<table>
+  <thead><tr><th>Alert</th><th>Source severity</th><th>Detected</th><th>Source</th></tr></thead>
+  <tbody>
+  {% for alert in alerts %}
+    <tr>
+      <td><a href="/alerts/{{ alert.alert_id }}">{{ alert.title }}</a><br><code>{{ alert.alert_id }}</code></td>
+      <td>{{ alert.source_severity.value }}</td><td>{{ alert.detected_at }}</td><td>{{ alert.source }}</td>
+    </tr>
+  {% else %}<tr><td colspan="4">No alerts ingested.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -98,9 +98,12 @@ def test_maps_candidate_and_preserves_model_confidence(fixture_dataset: Any) -> 
                     "disposition": "NEEDS_REVIEW",
                     "severity": "MEDIUM",
                     "confidence": "1.0",
+                    "evidence": [],
                     "reasoning_summary": "Synthetic evidence remains inconclusive.",
+                    "recommended_actions": [],
                     "escalation_required": True,
                     "escalation_reason": "Analyst review is required.",
+                    "tool_calls": [],
                 },
             }
         }
@@ -177,6 +180,26 @@ def test_timeout_is_sanitized(fixture_dataset: Any) -> None:
             ProviderFailureCategory.CONNECTION,
         ),
         (
+            openai.BadRequestError(
+                "invalid schema",
+                response=httpx.Response(
+                    400, request=httpx.Request("POST", "https://example.invalid")
+                ),
+                body={"error": {"code": "invalid_json_schema"}},
+            ),
+            ProviderFailureCategory.INVALID_REQUEST,
+        ),
+        (
+            openai.PermissionDeniedError(
+                "denied",
+                response=httpx.Response(
+                    403, request=httpx.Request("POST", "https://example.invalid")
+                ),
+                body=None,
+            ),
+            ProviderFailureCategory.PERMISSION,
+        ),
+        (
             openai.InternalServerError(
                 "unavailable",
                 response=httpx.Response(
@@ -228,9 +251,12 @@ def test_prompt_injection_is_serialized_as_inert_data(fixture_dataset: Any) -> N
                     "disposition": "NEEDS_REVIEW",
                     "severity": "LOW",
                     "confidence": "0",
+                    "evidence": [],
                     "reasoning_summary": "Untrusted text supplied no evidence.",
+                    "recommended_actions": [],
                     "escalation_required": True,
                     "escalation_reason": "Review required.",
+                    "tool_calls": [],
                 },
             }
         }
@@ -245,7 +271,8 @@ def test_prompt_injection_is_serialized_as_inert_data(fixture_dataset: Any) -> N
 
 
 def test_schema_exposes_only_seven_evidence_tool_identities() -> None:
-    schema = json.dumps(OpenAIReasonerOutput.model_json_schema())
+    schema = OpenAIReasonerOutput.model_json_schema()
+    serialized = json.dumps(schema)
     expected = {
         "get_recent_signins",
         "get_user_risk",
@@ -255,8 +282,14 @@ def test_schema_exposes_only_seven_evidence_tool_identities() -> None:
         "find_related_alerts",
         "get_identity_context",
     }
-    assert all(name in schema for name in expected)
-    assert all(term not in schema for term in ("disable_account", "shell", "sql", "url"))
+    assert all(name in serialized for name in expected)
+    tool_names = {
+        definition["properties"]["tool_name"]["const"]
+        for definition in schema["$defs"].values()
+        if "const" in definition.get("properties", {}).get("tool_name", {})
+    }
+    assert tool_names == expected
+    assert all(term not in tool_names for term in ("disable_account", "shell", "sql", "url"))
 
 
 def test_provider_output_models_forbid_extra_fields() -> None:
@@ -272,3 +305,91 @@ def test_provider_output_models_forbid_extra_fields() -> None:
                 }
             }
         )
+
+
+def test_sdk_serialized_schema_contains_only_closed_objects() -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        captured["schema"] = body["text"]["format"]["schema"]
+        return httpx.Response(
+            400,
+            request=request,
+            json={
+                "error": {
+                    "message": "captured",
+                    "type": "invalid_request_error",
+                    "param": "text.format.schema",
+                    "code": "captured",
+                }
+            },
+        )
+
+    client = openai.OpenAI(
+        api_key="test-only",  # pragma: allowlist secret
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        max_retries=0,
+    )
+    with pytest.raises(openai.BadRequestError):
+        client.responses.parse(
+            model="test-model",
+            input="synthetic",
+            text_format=OpenAIReasonerOutput,
+            store=False,
+        )
+
+    schema = captured["schema"]
+    assert isinstance(schema, dict)
+    open_objects: list[str] = []
+
+    def inspect(node: object, path: str = "$") -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object" and node.get("additionalProperties") is not False:
+                open_objects.append(path)
+            for key, value in node.items():
+                inspect(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                inspect(value, f"{path}[{index}]")
+
+    inspect(schema)
+    assert open_objects == []
+    serialized = json.dumps(schema)
+    assert "JsonValue" not in serialized
+    assert "oneOf" not in serialized
+
+
+def test_typed_action_parameters_map_to_domain(fixture_dataset: Any) -> None:
+    alert = fixture_dataset.alerts[0]
+    user = next(entity for entity in alert.entities if entity.entity_type == "USER")
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "CANDIDATE",
+                "candidate": {
+                    "disposition": "MALICIOUS",
+                    "severity": "HIGH",
+                    "confidence": 0.9,
+                    "evidence": [],
+                    "reasoning_summary": "Synthetic recommendation.",
+                    "recommended_actions": [
+                        {
+                            "action_id": "action-1",
+                            "catalog_action_id": "disable_account",
+                            "target": user.model_dump(mode="json"),
+                            "parameters": {},
+                            "rationale": "Contain the synthetic identity.",
+                        }
+                    ],
+                    "escalation_required": True,
+                    "escalation_reason": "High-impact recommendation.",
+                    "tool_calls": [],
+                },
+            }
+        }
+    )
+    step = reasoner(responses).next_step(context(alert))
+    assert isinstance(step, ReasonerCandidate)
+    assert step.candidate.recommended_actions[0].catalog_action_id == "disable_account"
+    assert dict(step.candidate.recommended_actions[0].parameters) == {}

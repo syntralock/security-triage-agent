@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from alembic import command
 from alembic.config import Config
+from pydantic import ValidationError
 from sqlalchemy.orm import Session, sessionmaker
 
 from security_triage_agent.adapters.persistence.uow import (
@@ -289,6 +290,10 @@ def test_fabricated_references_force_review(
 
 
 def test_iteration_and_deadline_bounds(tmp_path: Path, fixture_dataset: FixtureDataset) -> None:
+    assert OrchestrationLimits().deadline_ms == 30_000
+    with pytest.raises(ValidationError):
+        OrchestrationLimits(deadline_ms=30_001)
+
     request = ReasonerToolCall(
         call_id="one", tool_name="get_user_risk", arguments={"user_id": "user-alex"}
     )

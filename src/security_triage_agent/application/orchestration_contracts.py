@@ -71,7 +71,7 @@ class OrchestrationOutcome(DomainModel):
 
 class OrchestrationLimits(DomainModel):
     max_iterations: int = Field(default=8, ge=1, le=100)
-    deadline_ms: int = Field(default=5_000, ge=1, le=300_000)
+    deadline_ms: int = Field(default=30_000, ge=1, le=30_000)
     max_evidence_items: int = Field(default=16, ge=1, le=100)
     max_context_bytes: int = Field(default=131_072, ge=1_024, le=5_000_000)
 

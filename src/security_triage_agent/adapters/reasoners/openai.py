@@ -20,6 +20,10 @@ from security_triage_agent.application.orchestration_contracts import (
 )
 from security_triage_agent.application.policy import CandidateAssessment
 from security_triage_agent.domain._base import DomainModel, Identifier
+from security_triage_agent.domain.actions import ActionProposal
+from security_triage_agent.domain.entities import EntityType
+from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
+from security_triage_agent.domain.triage import Disposition, Severity
 from security_triage_agent.logging import log_event
 
 PROMPT_VERSION = "openai-l1-v1"
@@ -109,13 +113,116 @@ type OpenAIToolProposal = (
 )
 
 
+class OpenAINoParameters(DomainModel):
+    pass
+
+
+class OpenAIDeleteEmailParameters(DomainModel):
+    message_id: Identifier
+
+
+class OpenAIRemovePrivilegeParameters(DomainModel):
+    privilege_id: Identifier
+
+
+class OpenAIEntityReference(DomainModel):
+    entity_type: EntityType
+    identifier: Identifier
+
+
+class OpenAIDisableAccount(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["disable_account"]
+    target: OpenAIEntityReference
+    parameters: OpenAINoParameters
+    rationale: str
+
+
+class OpenAIRevokeSessions(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["revoke_sessions"]
+    target: OpenAIEntityReference
+    parameters: OpenAINoParameters
+    rationale: str
+
+
+class OpenAIResetPassword(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["reset_password"]
+    target: OpenAIEntityReference
+    parameters: OpenAINoParameters
+    rationale: str
+
+
+class OpenAIIsolateDevice(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["isolate_device"]
+    target: OpenAIEntityReference
+    parameters: OpenAINoParameters
+    rationale: str
+
+
+class OpenAIDeleteEmail(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["delete_email"]
+    target: OpenAIEntityReference
+    parameters: OpenAIDeleteEmailParameters
+    rationale: str
+
+
+class OpenAIRemovePrivilege(DomainModel):
+    action_id: Identifier
+    catalog_action_id: Literal["remove_privilege"]
+    target: OpenAIEntityReference
+    parameters: OpenAIRemovePrivilegeParameters
+    rationale: str
+
+
+type OpenAIActionProposal = (
+    OpenAIDisableAccount
+    | OpenAIRevokeSessions
+    | OpenAIResetPassword
+    | OpenAIIsolateDevice
+    | OpenAIDeleteEmail
+    | OpenAIRemovePrivilege
+)
+
+
+class OpenAICandidateAssessment(DomainModel):
+    disposition: Disposition
+    severity: Severity
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: tuple[EvidenceReference, ...]
+    reasoning_summary: str
+    recommended_actions: tuple[OpenAIActionProposal, ...]
+    escalation_required: bool
+    escalation_reason: str | None
+    tool_calls: tuple[ToolCallReference, ...]
+
+    def to_domain(self) -> CandidateAssessment:
+        return CandidateAssessment(
+            disposition=self.disposition,
+            severity=self.severity,
+            confidence=self.confidence,
+            evidence=self.evidence,
+            reasoning_summary=self.reasoning_summary,
+            recommended_actions=tuple(
+                ActionProposal.model_validate(action.model_dump())
+                for action in self.recommended_actions
+            ),
+            escalation_required=self.escalation_required,
+            escalation_reason=self.escalation_reason,
+            tool_calls=self.tool_calls,
+        )
+
+
 class OpenAICandidateProposal(DomainModel):
     step_type: Literal["CANDIDATE"] = "CANDIDATE"
-    candidate: CandidateAssessment
+    candidate: OpenAICandidateAssessment
 
 
 class OpenAIReasonerOutput(DomainModel):
-    step: OpenAIToolProposal | OpenAICandidateProposal = Field(discriminator="step_type")
+    step: OpenAIToolProposal | OpenAICandidateProposal
 
 
 class ProviderFailureCategory(StrEnum):
@@ -124,6 +231,9 @@ class ProviderFailureCategory(StrEnum):
     RATE_LIMIT = "rate_limit"
     UNAVAILABLE = "unavailable"
     CONNECTION = "connection"
+    INVALID_REQUEST = "invalid_request"
+    PERMISSION = "permission"
+    PROVIDER_ERROR = "provider_error"
     MALFORMED_RESPONSE = "malformed_response"
     VALIDATION = "validation"
     UNEXPECTED = "unexpected"
@@ -183,7 +293,7 @@ class OpenAIReasoner:
             output = OpenAIReasonerOutput.model_validate(parsed)
             step = output.step
             if isinstance(step, OpenAICandidateProposal):
-                result: ReasonerStep = ReasonerCandidate(candidate=step.candidate)
+                result: ReasonerStep = ReasonerCandidate(candidate=step.candidate.to_domain())
             else:
                 result = ReasonerToolCall(
                     call_id=step.call_id,
@@ -216,8 +326,14 @@ class OpenAIReasoner:
             self._raise_failure(ProviderFailureCategory.RATE_LIMIT, started, exc)
         except openai.APIConnectionError as exc:
             self._raise_failure(ProviderFailureCategory.CONNECTION, started, exc)
+        except openai.BadRequestError as exc:
+            self._raise_failure(ProviderFailureCategory.INVALID_REQUEST, started, exc)
+        except openai.PermissionDeniedError as exc:
+            self._raise_failure(ProviderFailureCategory.PERMISSION, started, exc)
         except openai.InternalServerError as exc:
             self._raise_failure(ProviderFailureCategory.UNAVAILABLE, started, exc)
+        except openai.APIStatusError as exc:
+            self._raise_failure(ProviderFailureCategory.PROVIDER_ERROR, started, exc)
         except Exception as exc:
             self._raise_failure(ProviderFailureCategory.UNEXPECTED, started, exc)
 

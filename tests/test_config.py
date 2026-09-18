@@ -13,6 +13,14 @@ def test_settings_have_safe_defaults() -> None:
     assert settings.service_name == "security-triage-agent"
     assert settings.log_level == "INFO"
     assert settings.log_format == "json"
+    assert settings.openai_request_timeout_seconds == 25.0
+
+
+def test_openai_timeout_has_a_hard_upper_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STA_OPENAI_REQUEST_TIMEOUT_SECONDS", "25.1")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_settings_load_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> None:

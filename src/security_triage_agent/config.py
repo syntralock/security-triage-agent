@@ -48,7 +48,7 @@ class Settings(BaseSettings):
         exclude=True,
     )
     openai_model: str = Field(default="gpt-5.6-luna", min_length=1, max_length=128)
-    openai_request_timeout_seconds: float = Field(default=4.0, ge=1.0, le=5.0)
+    openai_request_timeout_seconds: float = Field(default=25.0, ge=1.0, le=25.0)
     openai_max_output_tokens: int = Field(default=1_500, ge=128, le=8_192)
     openai_prompt_version: Literal["openai-l1-v1"] = "openai-l1-v1"
 

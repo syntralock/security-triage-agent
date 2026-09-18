@@ -37,6 +37,8 @@ security-triage-agent/
 │   │   ├── __init__.py
 │   │   ├── evidence_tools.py
 │   │   ├── action_catalog.py
+│   │   ├── orchestration_contracts.py
+│   │   ├── orchestrator.py
 │   │   ├── persistence.py
 │   │   ├── tool_registry.py
 │   │   ├── tool_gateway.py
@@ -64,7 +66,6 @@ security-triage-agent/
 │   │   │   ├── defender.py
 │   │   │   └── entra.py
 │   │   ├── reasoners/
-│   │   │   ├── openai.py
 │   │   │   └── fake.py
 │   │   ├── tools/
 │   │   │   ├── __init__.py

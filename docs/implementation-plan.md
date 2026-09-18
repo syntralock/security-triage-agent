@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–6 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–7 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -71,6 +71,8 @@ Implement post-reasoning validation, escalation rules, evidence minimums, action
 **Acceptance:** no candidate model output can remove an approval requirement or introduce an unregistered action.
 
 ## Milestone 7 — Bounded orchestration with a fake reasoner
+
+**Status:** complete on 2026-09-18. Milestone 8 has not started and requires explicit approval.
 
 Implement the `AgentReasoner` port, deterministic fake, bounded state machine, candidate-result validation, and triage application service. Persist all transitions and results.
 

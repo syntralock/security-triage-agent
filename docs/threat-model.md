@@ -8,6 +8,8 @@ Milestone 5 implements trust boundary 6 with parameterized SQLAlchemy repositori
 
 Milestone 6 makes action and post-reasoning policy metadata code-owned and immutable. All initial actions are high-impact and approval-required. Candidate content cannot register actions, change risk or approval requirements, supply policy identity, expand target scope, claim approval, or use confidence/severity/disposition to gain authority. Unknown and invalid conditions fail to an auditable escalated review result.
 
+Milestone 7 confines reasoner authority to typed proposals over a data-only context. The orchestrator owns iteration/deadline/context bounds, gateway routing, current-execution evidence references, policy invocation, lifecycle, idempotency, and transactional audit. Fabricated or cross-execution references and candidate claims of approval/execution fail safely. The deterministic fake has no network or provider dependency.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

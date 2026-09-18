@@ -88,6 +88,14 @@ The orchestrator never exposes callable application objects directly to the mode
 - `FakeReasoner`: deterministic scripted behavior for unit and integration tests.
 - Optionally, a rule-based baseline for evaluation comparisons.
 
+Milestone 7 realizes this boundary as a capability-free `AgentReasoner` port. `ReasonerContext` contains only the normalized alert, sanitized accumulated tool evidence, iteration count, and informational remaining call/iteration counts. It contains no gateway, registry, callable, repository, session, credential, policy object, approval, or executor. The offline `FakeReasoner` replays a deterministic script and records supplied contexts; it performs no prompting or network access.
+
+`TriageOrchestrator` owns the bounded state machine: persist `RUNNING`; request one reasoner step; route tool proposals exclusively through `ToolGateway`; transactionally persist each invocation and audit event; accumulate provenance-linked evidence; validate candidate evidence and tool-call references against the current execution; apply deterministic policy; then atomically persist actions, final result, terminal state, and policy/terminal audit events. The reasoner can propose but cannot call, authorize, persist, approve, or execute.
+
+Trusted limits independently bound reasoning iterations, overall elapsed time (including each reasoner call), gateway total/per-tool calls, evidence-item count, and serialized context size. A typed `NOT_FOUND` is useful evidence and may continue. Any denied or failed tool outcome terminates conservatively into durable review; repeated calls therefore cannot loop. Invalid output, exceptions, exhausted bounds, fabricated references, and policy-safe-review results likewise terminate with stable orchestration reason codes. The current synchronous timeout wrapper cannot forcibly terminate a non-cooperative Python thread, so future provider adapters must use cancellation-aware I/O.
+
+Execution creation uses a unique idempotency key. A repeated request returns the already durable result without running the reasoner again. Each tool attempt commits with its audit event, while final result/state/audit share one transaction. If final persistence fails, the returned outcome is explicitly non-durable and contains no claimed result; the earlier execution may remain `RUNNING` for later operational recovery. Database uniqueness prevents two final results for one execution, but distributed worker coordination and stale-running recovery remain future hardening concerns.
+
 The persisted record should include provider, model identifier, model/prompt version, request correlation, token/latency metadata where available, and a sanitized response or response hash according to retention policy.
 
 ### Evidence tool gateway and registry

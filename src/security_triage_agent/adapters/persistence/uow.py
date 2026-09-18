@@ -19,6 +19,16 @@ from security_triage_agent.adapters.persistence.repositories import (
     SqlAlchemyToolInvocationRepository,
     SqlAlchemyTriageResultRepository,
 )
+from security_triage_agent.application.ports.repositories import (
+    ActionExecutionRepository,
+    ActionRepository,
+    AlertRepository,
+    ApprovalRepository,
+    AuditRepository,
+    ExecutionRepository,
+    ToolInvocationRepository,
+    TriageResultRepository,
+)
 
 
 class PersistenceError(RuntimeError):
@@ -45,6 +55,15 @@ def _enable_sqlite_foreign_keys(dbapi_connection: object, _record: object) -> No
 
 class SqlAlchemyUnitOfWork:
     """Own one session/transaction; repositories never commit independently."""
+
+    alerts: AlertRepository
+    executions: ExecutionRepository
+    tool_invocations: ToolInvocationRepository
+    triage_results: TriageResultRepository
+    actions: ActionRepository
+    approvals: ApprovalRepository
+    action_executions: ActionExecutionRepository
+    audit: AuditRepository
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory

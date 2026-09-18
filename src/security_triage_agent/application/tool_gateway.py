@@ -116,6 +116,10 @@ class ToolExecutionContext:
     _per_tool_calls: Counter[str] = field(default_factory=Counter)
     _seen_calls: set[str] = field(default_factory=set)
 
+    @property
+    def total_calls_used(self) -> int:
+        return self._total_calls
+
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)

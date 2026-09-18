@@ -29,6 +29,7 @@ The repository must use synthetic demonstration data only. Never add real corpor
 - Do not place secrets or sensitive configuration in prompts, logs, fixtures, API responses, error messages, or audit payloads.
 - All state-changing response actions pass through a central action catalog and policy engine.
 - Treat candidate assessments as advisory input. Only the versioned deterministic policy may produce the final approval classification and enforced triage result.
+- Keep reasoner contexts data-only and capability-free. The orchestrator—not a reasoner—owns gateway access, bounds, evidence provenance, policy invocation, lifecycle, persistence, and audit.
 - Account disablement, session revocation, password reset, device isolation, email deletion, and privilege removal always require explicit, recorded human approval. An agent must never approve its own action.
 - An approval decision must be bound to the exact transaction, action type, target, parameters, and policy version. Granted approval also requires an expiry; rejection must not have an expiry. Any material action change invalidates approval.
 - Execute an approved action only through a dedicated action executor that rechecks authorization and approval immediately before execution.

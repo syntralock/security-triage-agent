@@ -88,6 +88,20 @@ class SqlAlchemyExecutionRepository:
             }
         )
 
+    def get_by_idempotency_key(self, key: str) -> TriageExecutionRecord | None:
+        row = self._session.scalar(
+            select(TriageExecutionRow).where(TriageExecutionRow.idempotency_key == key)
+        )
+        return self.get(row.execution_id) if row else None
+
+    def replace(self, execution: TriageExecutionRecord) -> None:
+        row = self._session.get(TriageExecutionRow, execution.execution_id)
+        if row is None:
+            raise ValueError("triage execution does not exist")
+        row.state = execution.state.value
+        row.updated_at = execution.updated_at.isoformat()
+        row.failure_category = execution.failure_category
+
 
 class SqlAlchemyToolInvocationRepository:
     def __init__(self, session: Session) -> None:

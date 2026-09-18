@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–6 are complete through the deterministic synthetic evidence environment, closed tool gateway, transactional persistence, and versioned deterministic policy/action catalog. Agent orchestration, real provider integrations, approval services, and remediation behavior have not been implemented.
+Milestones 0–7 are complete through the deterministic synthetic evidence environment, closed tool gateway, transactional persistence, versioned policy/action catalog, and bounded offline orchestration with a fake reasoner. API/UI ingestion, real provider integrations, approval services, and remediation behavior have not been implemented.
 
 For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
 

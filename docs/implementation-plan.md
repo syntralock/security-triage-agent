@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–5 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–6 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -61,6 +61,8 @@ Add SQLAlchemy models, repositories, unit of work, initial Alembic migration, SQ
 **Acceptance:** an execution and its tool history can be reconstructed after process restart; failed transactions do not leave misleading audit/state pairs.
 
 ## Milestone 6 — Deterministic policy and action catalog
+
+**Status:** complete on 2026-09-17. Milestone 7 has not started and requires explicit approval.
 
 Implement post-reasoning validation, escalation rules, evidence minimums, action catalog/risk levels, approval classification, and safe failure behavior. Register the six prohibited-without-approval actions.
 

@@ -16,11 +16,17 @@ from security_triage_agent.adapters.persistence.uow import (
     SqlAlchemyUnitOfWork,
     create_engine,
 )
+from security_triage_agent.application.action_catalog import initial_action_catalog
 from security_triage_agent.application.persistence import (
     ActionExecutionRecord,
     AuditEvent,
     AuditOutcome,
     TriageExecutionRecord,
+)
+from security_triage_agent.application.policy import (
+    AuthorizedActionScope,
+    CandidateAssessment,
+    DeterministicPolicy,
 )
 from security_triage_agent.application.tool_gateway import ToolInvocationRecord
 from security_triage_agent.domain.actions import ActionProposal, ActionReference, ActionState
@@ -350,3 +356,69 @@ def test_injection_like_content_is_inert(uow_factory: sessionmaker[Session]) -> 
 def test_unsupported_database_backend_is_sanitized() -> None:
     with pytest.raises(PersistenceError, match="unsupported database backend"):
         create_engine("mysql:///synthetic-database")
+
+
+def test_policy_result_and_approval_binding_survive_round_trip(
+    uow_factory: sessionmaker[Session],
+) -> None:
+    proposed = ActionProposal.model_validate(
+        {
+            "action_id": "action-disable-account",
+            "catalog_action_id": "disable_account",
+            "target": {"entity_type": "USER", "identifier": "user-alex"},
+            "parameters": {},
+            "rationale": "Synthetic policy-approved recommendation.",
+        }
+    )
+    candidate = CandidateAssessment(
+        disposition=Disposition.MALICIOUS,
+        severity=Severity.CRITICAL,
+        confidence=Decimal("0.999999"),
+        evidence=(
+            EvidenceReference(
+                evidence_id="evidence-policy",
+                source_type="source-alert",
+                source_reference="alert-001",
+                collected_at=NOW,
+                source_version="1.0",
+                summary="Synthetic traceable policy evidence.",
+            ),
+        ),
+        reasoning_summary="Synthetic policy candidate.",
+        recommended_actions=(proposed,),
+    )
+    policy = DeterministicPolicy(initial_action_catalog())
+    decision = policy.evaluate(
+        candidate,
+        alert_id="alert-001",
+        action_scope=AuthorizedActionScope(keys=frozenset({"USER:user-alex"})),
+        timestamp=NOW,
+    )
+    approval = ApprovalRecord(
+        approval_id="approval-policy",
+        action_id=proposed.action_id,
+        action_digest=decision.result.actions_requiring_approval[0].action_digest,
+        reviewer_id="reviewer-001",
+        decision="APPROVED",
+        decided_at=NOW,
+        reason="Synthetic approval compatibility check.",
+        policy_version=decision.policy_version,
+        expires_at=NOW + timedelta(hours=1),
+    )
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        uow.alerts.add(alert())
+        uow.flush()
+        uow.executions.add(execution())
+        uow.flush()
+        uow.actions.add("execution-001", proposed)
+        uow.flush()
+        uow.triage_results.add("result-policy", "execution-001", decision.result)
+        uow.approvals.add(approval)
+        uow.commit()
+    with SqlAlchemyUnitOfWork(uow_factory) as reloaded:
+        loaded = reloaded.triage_results.get_for_execution("execution-001")
+        loaded_approval = reloaded.approvals.get("approval-policy")
+        assert loaded == decision.result
+        assert loaded_approval == approval
+        assert loaded_approval is not None
+        assert loaded_approval.policy_version == decision.policy_version

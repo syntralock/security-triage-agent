@@ -130,9 +130,17 @@ Policy code receives the candidate assessment plus execution facts and produces 
 
 The policy version is persisted on every execution. Initially policy can be ordinary typed Python with exhaustive tests; a rule engine is unnecessary until policy complexity justifies it.
 
+Milestone 6 implements policy version `1.0.0` as pure application logic. `CandidateAssessment` is explicitly advisory and contains no policy version, approval classification, authorization scope, or execution authority. `PolicyDecision` contains the enforced `TriageResult`, stable reason codes, accepted and rejected action identities, and the policy version for later audit persistence.
+
+The minimum-evidence rule is deliberately conservative and simple: `BENIGN`, `SUSPICIOUS`, and `MALICIOUS` require at least one typed, traceable evidence reference. Missing evidence, invalid cross-references, malformed candidate data, unknown actions, invalid action parameters, unsupported target types, and out-of-scope targets force `NEEDS_REVIEW` and human escalation. Confidence remains an uncalibrated model report in the closed `0..1` Decimal range; it never grants action authority or bypasses approval.
+
 ### Action catalog, approval, and execution
 
 Recommendations use stable action identifiers, typed target/parameters, and human-readable rationale. A central catalog assigns each action a risk level and approval requirement. The six named high-impact actions are always approval-required.
+
+The immutable initial catalog registers `disable_account`, `revoke_sessions`, `reset_password`, `isolate_device`, `delete_email`, and `remove_privilege`, all at risk `HIGH_IMPACT`, version `1.0.0`, approval-required, and `NOT_IMPLEMENTED` for execution. Account/session/password/email/privilege actions target a scoped user; device isolation targets a scoped device. Email deletion requires a message identifier and privilege removal requires a privilege identifier; the other initial actions accept no parameters. Candidate text or extra metadata cannot register actions or alter these definitions.
+
+The authority chain is explicit: the LLM recommends; deterministic policy decides what is permitted; a human approval will authorize high-impact actions; a separate executor will eventually perform an approved action. This milestone implements only the first two parts and does not approve or execute anything.
 
 Approval is a separate workflow and durable record with reviewer identity, decision, timestamp, reason, policy version, and a digest of the exact action request. An approved decision requires an expiry defining the lifetime of granted authorization; a rejected decision must not have an expiry because no authorization was granted. The executor revalidates the action binding, policy, authorization, and expiry immediately before running. Initially, use a `NoOpActionExecutor` or synthetic simulator so the project demonstrates the boundary without touching real systems.
 

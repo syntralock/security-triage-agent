@@ -6,6 +6,8 @@ Milestone 4 implements trust boundaries 4 and 5 for the initial synthetic eviden
 
 Milestone 5 implements trust boundary 6 with parameterized SQLAlchemy repositories, database constraints, explicit Unit of Work transactions, sanitized persistence failures, versioned migrations, bounded structured audit payloads, and append-only repository semantics. SQLite audit data is not tamper-proof against an administrator or compromised process.
 
+Milestone 6 makes action and post-reasoning policy metadata code-owned and immutable. All initial actions are high-impact and approval-required. Candidate content cannot register actions, change risk or approval requirements, supply policy identity, expand target scope, claim approval, or use confidence/severity/disposition to gain authority. Unknown and invalid conditions fail to an auditable escalated review result.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

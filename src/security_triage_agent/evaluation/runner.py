@@ -28,6 +28,10 @@ class EvaluationRunner:
         clock: Clock,
         identifiers: IdentifierGenerator,
         reasoner_label: str,
+        reasoner_implementation: str,
+        provider: str,
+        model: str,
+        prompt_version: str,
         policy_version: str,
         application_version: str,
     ) -> None:
@@ -38,6 +42,10 @@ class EvaluationRunner:
         self._clock = clock
         self._ids = identifiers
         self._reasoner_label = reasoner_label
+        self._reasoner_implementation = reasoner_implementation
+        self._provider = provider
+        self._model = model
+        self._prompt_version = prompt_version
         self._policy_version = policy_version
         self._application_version = application_version
 
@@ -56,6 +64,10 @@ class EvaluationRunner:
             fixture_version=self._suite.fixture_version,
             policy_version=self._policy_version,
             reasoner_label=self._reasoner_label,
+            reasoner_implementation=self._reasoner_implementation,
+            provider=self._provider,
+            model=self._model,
+            prompt_version=self._prompt_version,
             application_version=self._application_version,
             started_at=started_at,
             completed_at=completed_at,

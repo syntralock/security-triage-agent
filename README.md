@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–10 are complete through the deterministic offline evaluation framework. The local application uses a deterministic demo reasoner, synthetic fixture tools, deterministic policy, immutable approval facts, simulated actions, durable audit records, and versioned scenario scoring. Real model/provider integrations, production authentication, and real remediation have not been implemented.
+Milestones 0–11 are complete through the optional OpenAI reasoner adapter. The safe default remains the deterministic demo reasoner. Both paths use synthetic fixture tools, deterministic policy, immutable approval facts, simulated actions, durable audit records, and versioned scenario scoring. Production authentication and real remediation have not been implemented.
 
 For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
 
@@ -40,7 +40,7 @@ The configured principal is the fixed synthetic `development-reviewer`. It is se
 
 - Python 3.12 or later
 - Docker with Compose (optional, for the container smoke check)
-- No OpenAI or external service credentials
+- No OpenAI or external service credentials for the default offline path
 
 ## Development setup
 
@@ -132,6 +132,31 @@ curl -X POST -H 'Content-Type: application/json' \
 Open the returned execution URL and follow its action link. Alert, evidence, rationale, reviewer reason, and audit text are untrusted and autoescaped. Errors use sanitized `{code, message}` objects.
 
 The demo reasoner has no model, prompt, network, or OpenAI dependency. It requests only the allowlisted synthetic user-risk tool, always escalates for review, and may propose a cataloged approval-gated action for high-severity demo alerts.
+
+### Optional OpenAI reasoner
+
+The OpenAI model is a reasoning component, not a security authority. The adapter uses the official Python SDK Responses API with strict Pydantic structured output. It does not enable SDK tool execution or pass application callables: a model tool request is typed data that the existing `ToolGateway` validates and executes. Deterministic policy remains authoritative, and all state-changing actions retain their approval requirements.
+
+Configuration is trusted and environment-only:
+
+```text
+STA_REASONER_PROVIDER=openai
+OPENAI_API_KEY=<local secret>
+STA_OPENAI_MODEL=gpt-5.6-luna
+STA_OPENAI_REQUEST_TIMEOUT_SECONDS=4
+STA_OPENAI_MAX_OUTPUT_TOKENS=1500
+STA_OPENAI_PROMPT_VERSION=openai-l1-v1
+```
+
+The default provider is `demo`. Enabling `openai` without a key fails closed; there is no silent fallback. SDK retries are disabled, requests set `store=False`, output is bounded, and provider errors become sanitized reasoner failures that orchestration durably resolves to `NEEDS_REVIEW` when possible.
+
+An optional live synthetic evaluation is developer-invoked only and never part of CI:
+
+```bash
+STA_REASONER_PROVIDER=openai python -m security_triage_agent.evaluation --scenario typed-not-found-evidence
+```
+
+It records provider, model, prompt version, suite, fixture, and policy identity. It creates no approval and performs no action execution. A full ten-scenario run can make up to the configured orchestration limit per scenario; with current defaults that is at most 80 provider requests, although normal successful cases generally use fewer. Token use depends on bounded alert/evidence context and the 1,500-token output ceiling per request.
 
 The authority chain is deliberately explicit:
 

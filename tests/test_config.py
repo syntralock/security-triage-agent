@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from security_triage_agent.config import Environment, Settings
+from security_triage_agent.config import Environment, ReasonerProvider, Settings
 
 
 def test_settings_have_safe_defaults() -> None:
@@ -25,6 +25,20 @@ def test_settings_load_prefixed_environment(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.environment is Environment.TEST
     assert settings.log_level == "WARNING"
     assert settings.log_format == "console"
+
+
+def test_openai_configuration_is_trusted_and_secret_is_excluded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STA_REASONER_PROVIDER", "openai")
+    monkeypatch.setenv("STA_OPENAI_MODEL", "configured-model")
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-test-key")
+    settings = Settings(_env_file=None)
+    assert settings.reasoner_provider is ReasonerProvider.OPENAI
+    assert settings.openai_model == "configured-model"
+    assert settings.openai_api_key is not None
+    assert "synthetic-test-key" not in repr(settings)
+    assert "synthetic-test-key" not in settings.model_dump_json()
 
 
 @pytest.mark.parametrize(

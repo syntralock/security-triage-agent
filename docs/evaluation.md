@@ -40,7 +40,7 @@ The confusion matrix uses the primary expected disposition as rows and actual di
 
 ## Persistence and reproducibility
 
-Alembic migration `0003_evaluation_results` adds normalized run/case identities and structured score JSON. Each run preserves suite/schema/fixture versions, reasoner label, policy version, application version, timestamps, aggregate metrics, scenario versions, and linked triage execution IDs. It stores no prompt or private chain-of-thought.
+Alembic migrations `0003_evaluation_results` and `0004_openai_evaluation_identity` add normalized run/case identities and structured score JSON. Each run preserves suite/schema/fixture versions, reasoner label, implementation, provider, configured model, prompt version, policy version, application version, timestamps, aggregate metrics, scenario versions, and linked triage execution IDs. It stores no prompt or private chain-of-thought.
 
 Controlled clocks can make duration deterministic in tests. Real local runs measure elapsed monotonic time, but CI does not assert wall-clock thresholds. Run IDs and timestamps may differ; material scores remain repeatable.
 
@@ -72,6 +72,8 @@ The offline deterministic demo baseline contains ten scenarios over four synthet
 
 Baseline result on 2026-09-18: 10 scenarios, 6 exact dispositions, 3 explicitly acceptable alternatives, 1 failure, 7 escalation matches, 0 false positives, 0 false negatives, 10 successful tool calls, 0 required-tool omissions, and 0 forbidden calls. The failed disposition is the clearly benign scenario: the intentionally conservative demo reasoner returns `NEEDS_REVIEW` instead of `BENIGN`. This limitation is retained rather than changing ground truth to improve the score.
 
-The small, overlapping synthetic suite is a harness baseline, not evidence of general SOC accuracy. Milestone 11 reasoners will implement the existing `AgentReasoner` port and run through this same harness without gaining access to ground truth or security authority.
+The small, overlapping synthetic suite is a harness baseline, not evidence of general SOC accuracy. The OpenAI adapter implements the existing `AgentReasoner` port and runs through this same harness without gaining access to ground truth or security authority.
+
+The optional OpenAI run uses the same command after trusted environment configuration selects `openai`. It never runs automatically, never receives scenario ground truth, never creates approvals, and never executes actions. Provider failures remain visible as safe review outcomes rather than triggering a hidden demo-reasoner fallback.
 
 **Model-reported confidence is not a calibrated probability.** It is not rewarded by scoring and cannot authorize an action.

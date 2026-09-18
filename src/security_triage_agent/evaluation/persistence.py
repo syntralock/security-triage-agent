@@ -11,6 +11,10 @@ class EvaluationRunRecord(DomainModel):
     fixture_version: Version
     policy_version: Version
     reasoner_label: Identifier
+    reasoner_implementation: Identifier
+    provider: Identifier
+    model: Identifier
+    prompt_version: Version
     application_version: Version
     started_at: UtcDatetime
     completed_at: UtcDatetime

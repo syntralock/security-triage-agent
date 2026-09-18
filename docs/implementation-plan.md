@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–10 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–11 are complete; Milestone 12 still requires explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -111,6 +111,8 @@ Implement versioned scenario schema, runner, deterministic scorer, reports, base
 **Acceptance:** one command produces a machine-readable and human-readable report from offline scenarios, with defined positive classes and thresholds.
 
 ## Milestone 11 — OpenAI adapter
+
+**Status:** complete on 2026-09-18. Milestone 12 has not started and requires explicit approval.
 
 Add the OpenAI SDK adapter behind `AgentReasoner`, strict structured output/tool calling, minimal prompt construction, provider timeouts/retries, token/latency capture, and safe provider-error mapping. Keep it optional and credential-gated.
 

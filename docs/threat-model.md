@@ -2,6 +2,12 @@
 
 Status: approved baseline. Revisit this document whenever a trust boundary, external integration, action type, or deployment model changes.
 
+Milestone 11 introduces one outbound trust boundary: a deliberately minimized synthetic alert/evidence context may be sent to OpenAI only when trusted local configuration explicitly selects `openai`. The adapter supplies no provider-executable tools, URLs, SQL, shell, filesystem access, approval operation, remediation operation, credentials, or application callable. Structured output is still untrusted and must pass local Pydantic parsing, orchestration reference validation, `ToolGateway`, and deterministic policy.
+
+Prompt-injection strings in alerts or evidence remain inert data. The versioned instructions explicitly forbid following embedded instructions, but security does not rely on model compliance: no exposed capability can perform those requests. Provider compromise, hallucination, fabricated references, maximum confidence, `MALICIOUS`, or `CRITICAL` output cannot bypass action catalog rules or approval. SDK retries are disabled to keep failure and cost bounded. Sanitized failure categories are logged; API keys, headers, raw responses, and stack traces are not persisted as reasoner metadata.
+
+Residual risks include provider data processing, probabilistic misclassification, model-version drift behind an unchanged provider alias, denial of service, token cost, and prompt-injection influence on advisory output. Mitigations are synthetic-only inputs, `store=False`, explicit model/prompt evaluation identity, request/deadline/output bounds, no silent fallback, offline CI, deterministic policy, human approval, and simulated-only execution. Live evaluation is explicit opt-in and is not a release-quality accuracy claim.
+
 Milestone 4 implements trust boundaries 4 and 5 for the initial synthetic evidence tools: a closed read-only registry, exact request/output validation, alert-derived entity scope, deterministic call budgets and duplicate denial, bounded input/output, timeouts, sanitized failures, and one in-memory invocation record per attempt. Durable storage of those records remains Milestone 5 work.
 
 Milestone 5 implements trust boundary 6 with parameterized SQLAlchemy repositories, database constraints, explicit Unit of Work transactions, sanitized persistence failures, versioned migrations, bounded structured audit payloads, and append-only repository semantics. SQLite audit data is not tamper-proof against an administrator or compromised process.

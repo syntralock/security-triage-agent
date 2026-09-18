@@ -11,6 +11,7 @@ from security_triage_agent.adapters.actions import SimulatedActionExecutor
 from security_triage_agent.adapters.api.app import AppDependencies, create_app
 from security_triage_agent.adapters.persistence.uow import SqlAlchemyUnitOfWork, create_engine
 from security_triage_agent.adapters.reasoners.demo import DemoReasoner
+from security_triage_agent.adapters.reasoners.openai import OpenAIReasoner
 from security_triage_agent.adapters.runtime import (
     DevelopmentPrincipalProvider,
     SystemClock,
@@ -35,7 +36,7 @@ from security_triage_agent.application.policy import POLICY_VERSION, Determinist
 from security_triage_agent.application.ports.auth import AuthorizationService
 from security_triage_agent.application.tool_gateway import GatewayLimits, ToolGateway
 from security_triage_agent.application.tool_registry import ToolRegistry
-from security_triage_agent.config import Environment, Settings, get_settings
+from security_triage_agent.config import Environment, ReasonerProvider, Settings, get_settings
 from security_triage_agent.evaluation.loader import load_suite
 from security_triage_agent.evaluation.runner import EvaluationRunner
 
@@ -67,8 +68,9 @@ def build_dependencies(settings: Settings) -> AppDependencies:
     identifiers = UuidIdentifierGenerator()
     catalog = initial_action_catalog()
     gateway_limits = GatewayLimits(total_calls=8, per_tool_calls=2)
+    reasoner = _build_reasoner(settings)
     orchestrator = TriageOrchestrator(
-        reasoner=DemoReasoner(),
+        reasoner=reasoner,
         gateway=ToolGateway(
             registry, now=clock.now, monotonic=lambda: clock.monotonic_ms() * 1_000_000
         ),
@@ -131,6 +133,18 @@ def build_evaluation_runner(settings: Settings) -> EvaluationRunner:
         registry=registry,
         catalog=dependencies.action_catalog,
     )
+    if settings.reasoner_provider is ReasonerProvider.OPENAI:
+        reasoner_label = f"openai:{settings.openai_model}:{settings.openai_prompt_version}"
+        reasoner_implementation = "OpenAIReasoner"
+        provider = "openai"
+        model = settings.openai_model
+        prompt_version: str = settings.openai_prompt_version
+    else:
+        reasoner_label = "deterministic-demo-v1"
+        reasoner_implementation = "DemoReasoner"
+        provider = "offline"
+        model = "deterministic-demo-v1"
+        prompt_version = "demo-v1"
     return EvaluationRunner(
         suite=suite,
         alerts=dataset.alerts,
@@ -138,7 +152,25 @@ def build_evaluation_runner(settings: Settings) -> EvaluationRunner:
         uow_factory=dependencies.uow_factory,
         clock=dependencies.clock,
         identifiers=dependencies.identifiers,
-        reasoner_label="deterministic-demo-v1",
+        reasoner_label=reasoner_label,
+        reasoner_implementation=reasoner_implementation,
+        provider=provider,
+        model=model,
+        prompt_version=prompt_version,
         policy_version=POLICY_VERSION,
         application_version=__version__,
+    )
+
+
+def _build_reasoner(settings: Settings) -> DemoReasoner | OpenAIReasoner:
+    if settings.reasoner_provider is ReasonerProvider.DEMO:
+        return DemoReasoner()
+    if settings.openai_api_key is None:
+        raise RuntimeError("OpenAI reasoner is enabled but OPENAI_API_KEY is not configured")
+    return OpenAIReasoner(
+        api_key=settings.openai_api_key.get_secret_value(),
+        model=settings.openai_model,
+        timeout_seconds=settings.openai_request_timeout_seconds,
+        max_output_tokens=settings.openai_max_output_tokens,
+        prompt_version=settings.openai_prompt_version,
     )

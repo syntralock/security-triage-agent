@@ -17,6 +17,7 @@ from security_triage_agent.adapters.persistence.models import (
 from security_triage_agent.adapters.persistence.uow import create_engine
 from security_triage_agent.adapters.reasoners.openai import OpenAIReasoner
 from security_triage_agent.config import Environment, ReasonerProvider, Settings
+from security_triage_agent.domain.states import TriageExecutionState
 
 
 class ScenarioResponses:
@@ -51,12 +52,16 @@ class ScenarioResponses:
                         "disposition": "NEEDS_REVIEW",
                         "severity": context["alert"]["source_severity"],
                         "confidence": "0.5",
-                        "evidence": [item["reference"] for item in evidence],
+                        "evidence_reference_ids": [
+                            item["reference"]["evidence_id"] for item in evidence
+                        ],
                         "reasoning_summary": "Mocked provider used supplied synthetic evidence.",
                         "recommended_actions": [],
                         "escalation_required": True,
                         "escalation_reason": "Mocked provider requested review.",
-                        "tool_calls": [item["tool_call"] for item in evidence],
+                        "tool_call_reference_ids": [
+                            item["tool_call"]["invocation_id"] for item in evidence
+                        ],
                     },
                 }
             }
@@ -69,7 +74,7 @@ class ScenarioResponses:
 def configured_settings(tmp_path: Path, fixture_root: Path) -> Settings:
     database = tmp_path / "openai-evaluation.db"
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{database}")
+    config.attributes["database_url"] = f"sqlite:///{database}"
     command.upgrade(config, "head")
     return Settings(
         _env_file=None,
@@ -116,6 +121,15 @@ def test_openai_reasoner_uses_same_runner_and_records_identity(
     assert report.aggregate.scenario_count == 1
     assert report.cases[0].score.successful_tool_calls == 1
     assert all("ground_truth" not in item for item in provider.inputs)
+
+    with runner._uow_factory() as uow:
+        execution = uow.executions.get(report.cases[0].triage_execution_id)
+        result = uow.triage_results.get_for_execution(report.cases[0].triage_execution_id)
+    assert execution is not None and execution.state is TriageExecutionState.NEEDS_REVIEW
+    assert result is not None
+    assert len(result.evidence) == 1
+    assert result.evidence[0].evidence_id.startswith("evidence-")
+    assert result.tool_calls[0].invocation_id == "mocked-openai-risk"
 
     engine = create_engine(settings.database_url)
     with engine.connect() as connection:

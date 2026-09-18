@@ -41,7 +41,7 @@ NOW = datetime(2026, 1, 15, 12, tzinfo=UTC)
 
 def migrate(path: Path) -> None:
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
+    config.attributes["database_url"] = f"sqlite:///{path}"
     command.upgrade(config, "head")
 
 

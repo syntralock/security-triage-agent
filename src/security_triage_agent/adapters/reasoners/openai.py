@@ -22,7 +22,6 @@ from security_triage_agent.application.policy import CandidateAssessment
 from security_triage_agent.domain._base import DomainModel, Identifier
 from security_triage_agent.domain.actions import ActionProposal
 from security_triage_agent.domain.entities import EntityType
-from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
 from security_triage_agent.domain.triage import Disposition, Severity
 from security_triage_agent.logging import log_event
 
@@ -192,19 +191,26 @@ class OpenAICandidateAssessment(DomainModel):
     disposition: Disposition
     severity: Severity
     confidence: float = Field(ge=0.0, le=1.0)
-    evidence: tuple[EvidenceReference, ...]
+    evidence_reference_ids: tuple[Identifier, ...]
     reasoning_summary: str
     recommended_actions: tuple[OpenAIActionProposal, ...]
     escalation_required: bool
     escalation_reason: str | None
-    tool_calls: tuple[ToolCallReference, ...]
+    tool_call_reference_ids: tuple[Identifier, ...]
 
-    def to_domain(self) -> CandidateAssessment:
+    def to_domain(self, context: ReasonerContext) -> CandidateAssessment:
+        evidence_by_id = {item.reference.evidence_id: item.reference for item in context.evidence}
+        calls_by_id = {item.tool_call.invocation_id: item.tool_call for item in context.evidence}
+        try:
+            evidence = tuple(evidence_by_id[item] for item in self.evidence_reference_ids)
+            tool_calls = tuple(calls_by_id[item] for item in self.tool_call_reference_ids)
+        except KeyError as exc:
+            raise ProviderReferenceError from exc
         return CandidateAssessment(
             disposition=self.disposition,
             severity=self.severity,
             confidence=self.confidence,
-            evidence=self.evidence,
+            evidence=evidence,
             reasoning_summary=self.reasoning_summary,
             recommended_actions=tuple(
                 ActionProposal.model_validate(action.model_dump())
@@ -212,8 +218,12 @@ class OpenAICandidateAssessment(DomainModel):
             ),
             escalation_required=self.escalation_required,
             escalation_reason=self.escalation_reason,
-            tool_calls=self.tool_calls,
+            tool_calls=tool_calls,
         )
+
+
+class ProviderReferenceError(ValueError):
+    """Provider selected a reference outside the current reasoner context."""
 
 
 class OpenAICandidateProposal(DomainModel):
@@ -293,7 +303,9 @@ class OpenAIReasoner:
             output = OpenAIReasonerOutput.model_validate(parsed)
             step = output.step
             if isinstance(step, OpenAICandidateProposal):
-                result: ReasonerStep = ReasonerCandidate(candidate=step.candidate.to_domain())
+                result: ReasonerStep = ReasonerCandidate(
+                    candidate=step.candidate.to_domain(context)
+                )
             else:
                 result = ReasonerToolCall(
                     call_id=step.call_id,
@@ -317,6 +329,8 @@ class OpenAIReasoner:
         except OpenAIReasonerError:
             raise
         except ValidationError as exc:
+            self._raise_failure(ProviderFailureCategory.VALIDATION, started, exc)
+        except ProviderReferenceError as exc:
             self._raise_failure(ProviderFailureCategory.VALIDATION, started, exc)
         except openai.APITimeoutError as exc:
             self._raise_failure(ProviderFailureCategory.TIMEOUT, started, exc)

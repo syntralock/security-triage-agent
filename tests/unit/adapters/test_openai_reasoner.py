@@ -1,6 +1,7 @@
 """OpenAI adapter boundary tests with no network or API spend."""
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -19,10 +20,12 @@ from security_triage_agent.adapters.reasoners.openai import (
     ProviderFailureCategory,
 )
 from security_triage_agent.application.orchestration_contracts import (
+    AccumulatedEvidence,
     ReasonerCandidate,
     ReasonerContext,
     ReasonerToolCall,
 )
+from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
 from security_triage_agent.domain.triage import Disposition, Severity
 
 
@@ -98,12 +101,12 @@ def test_maps_candidate_and_preserves_model_confidence(fixture_dataset: Any) -> 
                     "disposition": "NEEDS_REVIEW",
                     "severity": "MEDIUM",
                     "confidence": "1.0",
-                    "evidence": [],
+                    "evidence_reference_ids": [],
                     "reasoning_summary": "Synthetic evidence remains inconclusive.",
                     "recommended_actions": [],
                     "escalation_required": True,
                     "escalation_reason": "Analyst review is required.",
-                    "tool_calls": [],
+                    "tool_call_reference_ids": [],
                 },
             }
         }
@@ -113,6 +116,87 @@ def test_maps_candidate_and_preserves_model_confidence(fixture_dataset: Any) -> 
     assert step.candidate.confidence == Decimal("1.0")
     assert step.candidate.disposition is Disposition.NEEDS_REVIEW
     assert step.candidate.severity is Severity.MEDIUM
+
+
+def test_candidate_reference_ids_map_to_exact_context_objects(fixture_dataset: Any) -> None:
+    now = datetime(2026, 1, 15, 12, tzinfo=UTC)
+    evidence = EvidenceReference(
+        evidence_id="evidence-safe-1",
+        source_type="get_user_risk",
+        source_reference="call-safe-1",
+        collected_at=now,
+        source_version="v1",
+        summary="Sanitized synthetic evidence.",
+        tool_invocation_id="call-safe-1",
+    )
+    tool_call = ToolCallReference(
+        invocation_id="call-safe-1",
+        tool_name="get_user_risk",
+        tool_version="1.0.0",
+        called_at=now,
+        summary="Synthetic tool call.",
+    )
+    supplied = ReasonerContext(
+        alert=fixture_dataset.alerts[0],
+        evidence=(
+            AccumulatedEvidence(
+                reference=evidence, tool_call=tool_call, outcome={"status": "FOUND"}
+            ),
+        ),
+        iteration=2,
+        remaining_iterations=6,
+        remaining_total_tool_calls=7,
+    )
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "CANDIDATE",
+                "candidate": {
+                    "disposition": "BENIGN",
+                    "severity": "LOW",
+                    "confidence": 0.9,
+                    "evidence_reference_ids": [evidence.evidence_id],
+                    "reasoning_summary": "Synthetic evidence supports this assessment.",
+                    "recommended_actions": [],
+                    "escalation_required": False,
+                    "escalation_reason": None,
+                    "tool_call_reference_ids": [tool_call.invocation_id],
+                },
+            }
+        }
+    )
+
+    step = reasoner(responses).next_step(supplied)
+
+    assert isinstance(step, ReasonerCandidate)
+    assert step.candidate.evidence == (evidence,)
+    assert step.candidate.tool_calls == (tool_call,)
+
+
+def test_unknown_candidate_reference_id_fails_closed(fixture_dataset: Any) -> None:
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "CANDIDATE",
+                "candidate": {
+                    "disposition": "BENIGN",
+                    "severity": "LOW",
+                    "confidence": 0.9,
+                    "evidence_reference_ids": ["invented-evidence"],
+                    "reasoning_summary": "Synthetic candidate.",
+                    "recommended_actions": [],
+                    "escalation_required": False,
+                    "escalation_reason": None,
+                    "tool_call_reference_ids": [],
+                },
+            }
+        }
+    )
+
+    with pytest.raises(OpenAIReasonerError) as caught:
+        reasoner(responses).next_step(context(fixture_dataset.alerts[0]))
+
+    assert caught.value.category is ProviderFailureCategory.VALIDATION
 
 
 @pytest.mark.parametrize(
@@ -251,12 +335,12 @@ def test_prompt_injection_is_serialized_as_inert_data(fixture_dataset: Any) -> N
                     "disposition": "NEEDS_REVIEW",
                     "severity": "LOW",
                     "confidence": "0",
-                    "evidence": [],
+                    "evidence_reference_ids": [],
                     "reasoning_summary": "Untrusted text supplied no evidence.",
                     "recommended_actions": [],
                     "escalation_required": True,
                     "escalation_reason": "Review required.",
-                    "tool_calls": [],
+                    "tool_call_reference_ids": [],
                 },
             }
         }
@@ -371,7 +455,7 @@ def test_typed_action_parameters_map_to_domain(fixture_dataset: Any) -> None:
                     "disposition": "MALICIOUS",
                     "severity": "HIGH",
                     "confidence": 0.9,
-                    "evidence": [],
+                    "evidence_reference_ids": [],
                     "reasoning_summary": "Synthetic recommendation.",
                     "recommended_actions": [
                         {
@@ -384,7 +468,7 @@ def test_typed_action_parameters_map_to_domain(fixture_dataset: Any) -> None:
                     ],
                     "escalation_required": True,
                     "escalation_reason": "High-impact recommendation.",
-                    "tool_calls": [],
+                    "tool_call_reference_ids": [],
                 },
             }
         }

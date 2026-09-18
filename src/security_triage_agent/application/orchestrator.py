@@ -1,5 +1,6 @@
 """Bounded application service coordinating reasoner, gateway, policy, and audit."""
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -47,8 +48,10 @@ from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
 from security_triage_agent.domain.states import TriageExecutionState
 from security_triage_agent.domain.triage import Disposition
+from security_triage_agent.logging import log_event
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
+FINALIZATION_FAILURE = "FINALIZATION_FAILED"
 
 
 class TriageOrchestrator:
@@ -75,6 +78,7 @@ class TriageOrchestrator:
         self._limits = orchestration_limits
         self._gateway_limits = gateway_limits
         self._step_adapter: TypeAdapter[ReasonerStep] = TypeAdapter(ReasonerStep)
+        self._logger = logging.getLogger(__name__)
 
     def run(
         self,
@@ -141,6 +145,21 @@ class TriageOrchestrator:
             if isinstance(step, ReasonerCandidate):
                 candidate = step.candidate
                 if not self._candidate_references_are_valid(candidate, accumulated):
+                    log_event(
+                        self._logger,
+                        logging.WARNING,
+                        "triage.evidence_reference_violation",
+                        execution_id=execution_id,
+                        correlation_id=correlation_id,
+                        candidate_evidence_ids=[item.evidence_id for item in candidate.evidence],
+                        available_evidence_ids=[item.reference.evidence_id for item in accumulated],
+                        candidate_tool_call_ids=[
+                            item.invocation_id for item in candidate.tool_calls
+                        ],
+                        available_tool_call_ids=[
+                            item.tool_call.invocation_id for item in accumulated
+                        ],
+                    )
                     termination = OrchestrationReasonCode.EVIDENCE_REFERENCE_VIOLATION
                     candidate = None
                 break
@@ -288,19 +307,25 @@ class TriageOrchestrator:
             if decision.result.disposition is Disposition.NEEDS_REVIEW
             else TriageExecutionState.COMPLETED
         )
+        stage = "load_execution"
         try:
             with self._uow_factory() as uow:
                 existing = uow.executions.get(execution_id)
                 if existing is None:
                     return False
+                stage = "persist_actions"
                 for action in decision.result.recommended_actions:
                     uow.actions.add(execution_id, action, decision.policy_version)
                 if decision.result.recommended_actions:
+                    stage = "flush_actions"
                     uow.flush()
+                stage = "persist_result"
                 uow.triage_results.add(self._ids.next_id("result"), execution_id, decision.result)
+                stage = "transition_execution"
                 uow.executions.replace(
                     existing.model_copy(update={"state": terminal, "updated_at": self._clock.now()})
                 )
+                stage = "append_audit"
                 uow.audit.append(
                     self._audit(
                         "triage.policy_enforced",
@@ -322,10 +347,67 @@ class TriageOrchestrator:
                         {"state": terminal.value},
                     )
                 )
+                stage = "commit"
                 uow.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "triage.persistence_failed",
+                execution_id=execution_id,
+                correlation_id=correlation_id,
+                failure_category=FINALIZATION_FAILURE,
+                stage=stage,
+                exception_type=self._root_exception_type(exc),
+            )
+            self._record_terminal_persistence_failure(execution_id, correlation_id, stage)
             return False
+
+    def _record_terminal_persistence_failure(
+        self, execution_id: str, correlation_id: str, stage: str
+    ) -> None:
+        try:
+            with self._uow_factory() as uow:
+                existing = uow.executions.get(execution_id)
+                if existing is None or existing.state is not TriageExecutionState.RUNNING:
+                    return
+                uow.executions.replace(
+                    existing.model_copy(
+                        update={
+                            "state": TriageExecutionState.FAILED,
+                            "updated_at": self._clock.now(),
+                            "failure_category": FINALIZATION_FAILURE,
+                        }
+                    )
+                )
+                uow.audit.append(
+                    self._audit(
+                        "triage.persistence_failed",
+                        execution_id,
+                        correlation_id,
+                        {"failure_category": FINALIZATION_FAILURE, "stage": stage},
+                        outcome=AuditOutcome.FAILED,
+                    )
+                )
+                uow.commit()
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "triage.persistence_failure_record_failed",
+                execution_id=execution_id,
+                correlation_id=correlation_id,
+                failure_category=FINALIZATION_FAILURE,
+                exception_type=self._root_exception_type(exc),
+            )
+
+    @staticmethod
+    def _root_exception_type(exc: Exception) -> str:
+        root: BaseException = exc
+        while root.__cause__ is not None:
+            root = root.__cause__
+        return type(root).__name__
 
     def _safe_policy_decision(
         self, alert: SecurityAlert, scope: AuthorizedActionScope

@@ -64,7 +64,7 @@ NOW = datetime(2026, 1, 15, 12, tzinfo=UTC)
 def migrate(path: Path) -> sessionmaker[Session]:
     path.parent.mkdir(parents=True, exist_ok=True)
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
+    config.attributes["database_url"] = f"sqlite:///{path}"
     command.upgrade(config, "head")
     return sessionmaker(create_engine(f"sqlite:///{path}"), expire_on_commit=False)
 
@@ -451,7 +451,7 @@ def test_candidate_cannot_claim_approval_or_execution(
 
 
 def test_final_persistence_failure_never_claims_completion(
-    tmp_path: Path, fixture_dataset: FixtureDataset
+    tmp_path: Path, fixture_dataset: FixtureDataset, caplog: pytest.LogCaptureFixture
 ) -> None:
     factory = migrate(tmp_path / "failure.db")
 
@@ -474,14 +474,23 @@ def test_final_persistence_failure_never_claims_completion(
         orchestration_limits=OrchestrationLimits(),
         gateway_limits=GatewayLimits(total_calls=2, per_tool_calls=1),
     )
-    outcome = run(service, alert())
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
     assert not outcome.durable
     assert outcome.reason_code is OrchestrationReasonCode.PERSISTENCE_FAILURE
     assert outcome.result is None
     with SqlAlchemyUnitOfWork(factory) as uow:
         execution = uow.executions.get("execution-orchestration")
-        assert execution is not None and execution.state is TriageExecutionState.RUNNING
+        assert execution is not None and execution.state is TriageExecutionState.FAILED
+        assert execution.failure_category == "FINALIZATION_FAILED"
         assert uow.triage_results.get_for_execution(execution.execution_id) is None
+        events = uow.audit.list_for_target("triage_execution", execution.execution_id)
+        assert events[-1].event_type == "triage.persistence_failed"
+        assert events[-1].data == {
+            "failure_category": "FINALIZATION_FAILED",
+            "stage": "commit",
+        }
+    assert "synthetic final failure" not in caplog.text
 
 
 class FailureTool:

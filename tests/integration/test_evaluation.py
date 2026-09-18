@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 
 from security_triage_agent.adapters.persistence.models import (
     ActionExecutionRow,
@@ -24,7 +25,7 @@ def settings(tmp_path: Path, fixture_root: Path) -> Settings:
     database = tmp_path / "evaluation.db"
     database.parent.mkdir(parents=True, exist_ok=True)
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{database}")
+    config.attributes["database_url"] = f"sqlite:///{database}"
     command.upgrade(config, "head")
     return Settings(
         environment=Environment.TEST,
@@ -75,6 +76,34 @@ def test_full_suite_runs_same_bounded_path_and_persists(tmp_path: Path, fixture_
     assert "not a calibrated probability" in text
     assert "Confusion matrix" in text
     assert '"suite_version":"v1"' in render_json(report).replace(" ", "").replace("\n", "")
+
+
+def test_alembic_and_evaluator_share_trusted_environment_database_url(
+    tmp_path: Path, fixture_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "selected-evaluation.db"
+    decoy = tmp_path / "must-not-be-used.db"
+    database_url = f"sqlite:///{database}"
+    monkeypatch.setenv("STA_DATABASE_URL", database_url)
+    monkeypatch.setenv("STA_REASONER_PROVIDER", "demo")
+
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{decoy}")
+    command.upgrade(config, "head")
+
+    configured = Settings(
+        environment=Environment.TEST,
+        fixture_path=str(fixture_root),
+        evaluation_path=str(fixture_root.parents[1] / "evaluations/v1/manifest.json"),
+    )
+    assert configured.database_url == database_url
+    tables = set(inspect(create_engine(configured.database_url)).get_table_names())
+    assert {"tool_invocations", "evaluation_runs", "evaluation_case_results"} <= tables
+
+    report = build_evaluation_runner(configured).run("typed-not-found-evidence")
+    assert report.aggregate.scenario_count == 1
+    assert report.cases[0].score.completed_durably
+    assert not decoy.exists()
 
 
 def test_single_scenario_and_restart_reconstruction(tmp_path: Path, fixture_root: Path) -> None:

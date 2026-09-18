@@ -59,7 +59,7 @@ class FailingSimulator:
 
 def migrate(path: Path) -> None:
     config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
+    config.attributes["database_url"] = f"sqlite:///{path}"
     command.upgrade(config, "head")
 
 

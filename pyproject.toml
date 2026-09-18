@@ -37,6 +37,7 @@ dev = [
 
 [project.scripts]
 security-triage-agent = "security_triage_agent.__main__:main"
+security-triage-evaluate = "security_triage_agent.evaluation.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/security_triage_agent"]

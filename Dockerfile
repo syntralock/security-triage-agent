@@ -10,6 +10,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY fixtures ./fixtures
+COPY evaluations ./evaluations
 COPY alembic.ini ./
 COPY migrations ./migrations
 

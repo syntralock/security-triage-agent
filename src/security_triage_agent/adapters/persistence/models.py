@@ -132,3 +132,28 @@ class AuditEventRow(Base):
     outcome: Mapped[str | None] = mapped_column(String(32))
     failure_category: Mapped[str | None] = mapped_column(String(128))
     schema_version: Mapped[str] = mapped_column(String(64))
+
+
+class EvaluationRunRow(Base):
+    __tablename__ = "evaluation_runs"
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    suite_version: Mapped[str] = mapped_column(String(64))
+    schema_version: Mapped[str] = mapped_column(String(64))
+    fixture_version: Mapped[str] = mapped_column(String(64))
+    policy_version: Mapped[str] = mapped_column(String(64))
+    reasoner_label: Mapped[str] = mapped_column(String(128))
+    application_version: Mapped[str] = mapped_column(String(64))
+    started_at: Mapped[str] = mapped_column(String(40))
+    completed_at: Mapped[str] = mapped_column(String(40))
+    aggregate_data: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class EvaluationCaseResultRow(Base):
+    __tablename__ = "evaluation_case_results"
+    __table_args__ = (UniqueConstraint("run_id", "scenario_id", name="uq_eval_run_scenario"),)
+    case_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("evaluation_runs.run_id"))
+    scenario_id: Mapped[str] = mapped_column(String(128))
+    scenario_version: Mapped[str] = mapped_column(String(64))
+    triage_execution_id: Mapped[str] = mapped_column(ForeignKey("triage_executions.execution_id"))
+    score_data: Mapped[dict[str, Any]] = mapped_column(JSON)

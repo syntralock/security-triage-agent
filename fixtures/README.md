@@ -33,3 +33,5 @@ PYTHONPATH=src python scripts/verify_fixtures.py fixtures/v1
 ```
 
 Descriptive strings are inert evidence. One record deliberately contains prompt-injection-like text to verify that fixture loading never treats evidence as instructions.
+
+The synthetic `user-casey` identity intentionally has no user-risk record. Its alert supports deterministic `NOT_FOUND` and insufficient-evidence evaluation without representing a missing referential-integrity relationship: risk records may reference only known identities, while not every identity is required to have a risk record.

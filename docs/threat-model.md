@@ -14,6 +14,8 @@ Milestone 8 exposes those services through FastAPI without moving authority into
 
 Milestone 9 adds reviewer-authorized mutation but no real remediation. Approval binds an immutable action digest and policy version to a synthetic reviewer and trusted expiry. Execution reloads and compares authoritative records immediately before use, denies stale/expired/rejected/missing approval, requires both historical and current reviewer authorization, and prevents duplicate successful execution. The only executor is deterministic, offline, and labeled `SIMULATED`; it has no network, shell, filesystem, email, identity, device, or provider capability. Browser mutations require a session-bound HMAC CSRF token. Audit events preserve decisions, denials, simulation start, and terminal simulation outcomes.
 
+Milestone 10 treats evaluation manifests as untrusted declarative data at load time and ground truth as trusted only after strict reference validation. Expected answers and maintainer rationales never enter reasoner context. Evaluation uses the normal gateway and policy path, cannot register a tool/callable, and neither approves nor executes recommended actions. Persisted reports contain typed outcomes and metrics, not chain-of-thought. Scenario overlap and the small synthetic dataset remain explicit validity limitations.
+
 ## Scope and assumptions
 
 This model covers synthetic alert ingestion, triage orchestration, model reasoning, evidence tools, persistence, human approval, simulated action execution, evaluation, API, and minimal UI.

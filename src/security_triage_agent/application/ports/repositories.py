@@ -14,6 +14,7 @@ from security_triage_agent.domain.actions import ActionProposal
 from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.approvals import ApprovalRecord
 from security_triage_agent.domain.triage import TriageResult
+from security_triage_agent.evaluation.persistence import EvaluationCaseRecord, EvaluationRunRecord
 
 
 class AlertRepository(Protocol):
@@ -68,6 +69,13 @@ class AuditRepository(Protocol):
     def list_for_target(self, target_type: str, target_id: str) -> tuple[AuditEvent, ...]: ...
 
 
+class EvaluationRepository(Protocol):
+    def add_run(self, run: EvaluationRunRecord) -> None: ...
+    def add_case(self, case: EvaluationCaseRecord) -> None: ...
+    def get_run(self, run_id: str) -> EvaluationRunRecord | None: ...
+    def list_cases(self, run_id: str) -> tuple[EvaluationCaseRecord, ...]: ...
+
+
 class UnitOfWork(Protocol):
     alerts: AlertRepository
     executions: ExecutionRepository
@@ -77,6 +85,7 @@ class UnitOfWork(Protocol):
     approvals: ApprovalRepository
     action_executions: ActionExecutionRepository
     audit: AuditRepository
+    evaluations: EvaluationRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

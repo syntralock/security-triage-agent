@@ -10,6 +10,8 @@ from security_triage_agent.adapters.persistence.models import (
     AlertRow,
     ApprovalDecisionRow,
     AuditEventRow,
+    EvaluationCaseResultRow,
+    EvaluationRunRow,
     RecommendedActionRow,
     ToolInvocationRow,
     TriageExecutionRow,
@@ -26,6 +28,8 @@ from security_triage_agent.domain.actions import ActionProposal
 from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.approvals import ApprovalRecord
 from security_triage_agent.domain.triage import TriageResult
+from security_triage_agent.evaluation.persistence import EvaluationCaseRecord, EvaluationRunRecord
+from security_triage_agent.evaluation.scoring import EvaluationAggregate, EvaluationCaseScore
 
 
 def _json(model: Any) -> dict[str, Any]:
@@ -379,6 +383,74 @@ class SqlAlchemyAuditRepository:
                     "failure_category": row.failure_category,
                     "schema_version": row.schema_version,
                 }
+            )
+            for row in rows
+        )
+
+
+class SqlAlchemyEvaluationRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add_run(self, run: EvaluationRunRecord) -> None:
+        self._session.add(
+            EvaluationRunRow(
+                run_id=run.run_id,
+                suite_version=run.suite_version,
+                schema_version=run.schema_version,
+                fixture_version=run.fixture_version,
+                policy_version=run.policy_version,
+                reasoner_label=run.reasoner_label,
+                application_version=run.application_version,
+                started_at=run.started_at.isoformat(),
+                completed_at=run.completed_at.isoformat(),
+                aggregate_data=_json(run.aggregate),
+            )
+        )
+
+    def add_case(self, case: EvaluationCaseRecord) -> None:
+        self._session.add(
+            EvaluationCaseResultRow(
+                case_id=case.case_id,
+                run_id=case.run_id,
+                scenario_id=case.scenario_id,
+                scenario_version=case.scenario_version,
+                triage_execution_id=case.triage_execution_id,
+                score_data=_json(case.score),
+            )
+        )
+
+    def get_run(self, run_id: str) -> EvaluationRunRecord | None:
+        row = self._session.get(EvaluationRunRow, run_id)
+        if row is None:
+            return None
+        return EvaluationRunRecord(
+            run_id=row.run_id,
+            suite_version=row.suite_version,
+            schema_version=row.schema_version,
+            fixture_version=row.fixture_version,
+            policy_version=row.policy_version,
+            reasoner_label=row.reasoner_label,
+            application_version=row.application_version,
+            started_at=row.started_at,
+            completed_at=row.completed_at,
+            aggregate=EvaluationAggregate.model_validate(row.aggregate_data),
+        )
+
+    def list_cases(self, run_id: str) -> tuple[EvaluationCaseRecord, ...]:
+        rows = self._session.scalars(
+            select(EvaluationCaseResultRow)
+            .where(EvaluationCaseResultRow.run_id == run_id)
+            .order_by(EvaluationCaseResultRow.scenario_id)
+        )
+        return tuple(
+            EvaluationCaseRecord(
+                case_id=row.case_id,
+                run_id=row.run_id,
+                scenario_id=row.scenario_id,
+                scenario_version=row.scenario_version,
+                triage_execution_id=row.triage_execution_id,
+                score=EvaluationCaseScore.model_validate(row.score_data),
             )
             for row in rows
         )

@@ -24,12 +24,12 @@ def test_v1_fixture_dataset_loads_with_expected_records(fixture_root: Path) -> N
     dataset = load_fixture_dataset(fixture_root)
 
     assert dataset.manifest.fixture_version == "v1"
-    assert len(dataset.identities) == 2
+    assert len(dataset.identities) == 3
     assert len(dataset.sign_ins) == 4
     assert len(dataset.devices) == 2
     assert len(dataset.ip_reputations) == 4
     assert len(dataset.mfa_events) == 3
-    assert len(dataset.alerts) == 3
+    assert len(dataset.alerts) == 4
 
 
 def test_fixture_validator_rejects_duplicate_identifiers(

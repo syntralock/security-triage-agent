@@ -1,6 +1,6 @@
 # Proposed Repository Structure
 
-Status: approved structure, updated through Milestone 9. Later directories remain deferred to their owning milestones.
+Status: approved structure, updated through Milestone 10. Later directories remain deferred to their owning milestones.
 
 ```text
 security-triage-agent/
@@ -79,6 +79,13 @@ security-triage-agent/
 │   │   └── actions/
 │   │       └── simulated.py
 │   ├── bootstrap.py
+│   ├── evaluation/
+│   │   ├── schema.py
+│   │   ├── loader.py
+│   │   ├── runner.py
+│   │   ├── scoring.py
+│   │   ├── persistence.py
+│   │   └── reporting.py
 │   ├── config.py
 │   └── logging.py
 ├── fixtures/
@@ -94,9 +101,8 @@ security-triage-agent/
 │   │   ├── mfa_events.json
 │   │   └── related_alerts.json
 ├── evaluations/
-│   ├── scenarios/
-│   ├── schema.json
-│   └── README.md
+│   └── v1/
+│       └── manifest.json
 ├── tests/
 │   ├── unit/
 │   ├── integration/

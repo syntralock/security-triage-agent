@@ -16,5 +16,14 @@
     "enabled": true,
     "privilege_level": "PRIVILEGED",
     "device_ids": ["device-riley-admin"]
+  },
+  {
+    "user_id": "user-casey",
+    "display_name": "Synthetic Researcher Casey",
+    "principal_name": "casey@security-lab.example.test",
+    "role": "Synthetic Researcher",
+    "enabled": true,
+    "privilege_level": "STANDARD",
+    "device_ids": []
   }
 ]

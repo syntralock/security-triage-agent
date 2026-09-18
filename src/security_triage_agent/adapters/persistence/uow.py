@@ -15,6 +15,7 @@ from security_triage_agent.adapters.persistence.repositories import (
     SqlAlchemyAlertRepository,
     SqlAlchemyApprovalRepository,
     SqlAlchemyAuditRepository,
+    SqlAlchemyEvaluationRepository,
     SqlAlchemyExecutionRepository,
     SqlAlchemyToolInvocationRepository,
     SqlAlchemyTriageResultRepository,
@@ -25,6 +26,7 @@ from security_triage_agent.application.ports.repositories import (
     AlertRepository,
     ApprovalRepository,
     AuditRepository,
+    EvaluationRepository,
     ExecutionRepository,
     ToolInvocationRepository,
     TriageResultRepository,
@@ -64,6 +66,7 @@ class SqlAlchemyUnitOfWork:
     approvals: ApprovalRepository
     action_executions: ActionExecutionRepository
     audit: AuditRepository
+    evaluations: EvaluationRepository
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -79,6 +82,7 @@ class SqlAlchemyUnitOfWork:
         self.approvals = SqlAlchemyApprovalRepository(self.session)
         self.action_executions = SqlAlchemyActionExecutionRepository(self.session)
         self.audit = SqlAlchemyAuditRepository(self.session)
+        self.evaluations = SqlAlchemyEvaluationRepository(self.session)
         return self
 
     def __exit__(

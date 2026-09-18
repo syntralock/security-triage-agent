@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–9 are complete through a small FastAPI transport, human approval boundary, and deterministic simulated-action workflow. The local application uses a deterministic demo reasoner, synthetic fixture tools, deterministic policy, immutable approval facts, and durable audit records. Real provider integrations, production authentication, and real remediation have not been implemented.
+Milestones 0–10 are complete through the deterministic offline evaluation framework. The local application uses a deterministic demo reasoner, synthetic fixture tools, deterministic policy, immutable approval facts, simulated actions, durable audit records, and versioned scenario scoring. Real model/provider integrations, production authentication, and real remediation have not been implemented.
 
 For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
 
@@ -26,6 +26,7 @@ The configured principal is the fixed synthetic `development-reviewer`. It is se
 - [Proposed repository structure](docs/repository-structure.md)
 - [Threat model](docs/threat-model.md)
 - [Implementation plan](docs/implementation-plan.md)
+- [Evaluation framework](docs/evaluation.md)
 - [Engineering and security rules](AGENTS.md)
 
 ## Safety scope
@@ -90,6 +91,15 @@ make container-smoke
 ```
 
 The test and check workflow is offline after dependencies are installed and does not require paid API access.
+
+Run the deterministic evaluation baseline after applying migrations:
+
+```bash
+python -m security_triage_agent.evaluation
+python -m security_triage_agent.evaluation --json
+```
+
+The baseline deliberately reports the demo reasoner’s limitations. Ground truth is never included in reasoner context, scoring is component-based rather than opaque, and evaluation never approves or executes an action. Model-reported confidence is not a calibrated probability.
 
 ## Local synthetic demo
 

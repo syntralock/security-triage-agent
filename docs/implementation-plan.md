@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–9 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–10 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -101,6 +101,8 @@ Implement proposed-action persistence, reviewer approve/reject flow, expiry/dige
 **Acceptance:** high-impact actions never execute without a current matching approval; the UI/API clearly distinguishes recommendation, approval, and execution.
 
 ## Milestone 10 — Evaluation framework
+
+**Status:** complete on 2026-09-18. Milestone 11 has not started and requires explicit approval.
 
 Implement versioned scenario schema, runner, deterministic scorer, reports, baseline scenario suite, and metrics for disposition, false positives/negatives, escalation, tool selection, and latency.
 

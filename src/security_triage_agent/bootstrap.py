@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
+from security_triage_agent import __version__
 from security_triage_agent.adapters.actions import SimulatedActionExecutor
 from security_triage_agent.adapters.api.app import AppDependencies, create_app
 from security_triage_agent.adapters.persistence.uow import SqlAlchemyUnitOfWork, create_engine
@@ -30,11 +31,13 @@ from security_triage_agent.application.alert_service import AlertIngestionServic
 from security_triage_agent.application.approval_service import ApprovalService
 from security_triage_agent.application.orchestration_contracts import OrchestrationLimits
 from security_triage_agent.application.orchestrator import TriageOrchestrator
-from security_triage_agent.application.policy import DeterministicPolicy
+from security_triage_agent.application.policy import POLICY_VERSION, DeterministicPolicy
 from security_triage_agent.application.ports.auth import AuthorizationService
 from security_triage_agent.application.tool_gateway import GatewayLimits, ToolGateway
 from security_triage_agent.application.tool_registry import ToolRegistry
 from security_triage_agent.config import Environment, Settings, get_settings
+from security_triage_agent.evaluation.loader import load_suite
+from security_triage_agent.evaluation.runner import EvaluationRunner
 
 
 def build_dependencies(settings: Settings) -> AppDependencies:
@@ -104,3 +107,38 @@ def create_default_app() -> FastAPI:
     """Uvicorn factory. Migrations must already be applied."""
 
     return create_app(build_dependencies(get_settings()))
+
+
+def build_evaluation_runner(settings: Settings) -> EvaluationRunner:
+    """Build the offline evaluator from the same trusted application composition."""
+
+    dependencies = build_dependencies(settings)
+    dataset = load_fixture_dataset(Path(settings.fixture_path))
+    registry = ToolRegistry(
+        (
+            FixtureRecentSignInsTool(dataset),
+            FixtureUserRiskTool(dataset),
+            FixtureDeviceContextTool(dataset),
+            FixtureIpReputationTool(dataset),
+            FixtureMfaEventsTool(dataset),
+            FixtureRelatedAlertsTool(dataset),
+            FixtureIdentityContextTool(dataset),
+        )
+    )
+    suite = load_suite(
+        Path(settings.evaluation_path),
+        fixtures=dataset,
+        registry=registry,
+        catalog=dependencies.action_catalog,
+    )
+    return EvaluationRunner(
+        suite=suite,
+        alerts=dataset.alerts,
+        orchestrator=dependencies.orchestrator,
+        uow_factory=dependencies.uow_factory,
+        clock=dependencies.clock,
+        identifiers=dependencies.identifiers,
+        reasoner_label="deterministic-demo-v1",
+        policy_version=POLICY_VERSION,
+        application_version=__version__,
+    )

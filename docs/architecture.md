@@ -2,6 +2,10 @@
 
 Status: approved on 2026-09-17. Milestone implementation remains gated by `docs/implementation-plan.md`.
 
+Milestone 10 adds an offline evaluation adapter around—not inside—the established triage authority path. Versioned trusted scenario data is loaded and validated separately from `ReasonerContext`; the runner invokes `TriageOrchestrator`, reads durable gateway/policy outcomes, applies transparent deterministic scoring, and persists evaluation run/case records. It cannot approve or execute actions. Scenario content cannot register tools, choose callables, replace policy, or reach the reasoner as ground truth.
+
+Each scenario execution receives isolated alert/payload identifiers so repeated references to one fixture can produce independent immutable executions without action-ID collisions. Entity scope and evidence still derive from the referenced alert. Runs preserve suite, schema, fixture, policy, reasoner, and application versions plus linked triage execution IDs. Metrics keep disposition, escalation, tools, actions, security controls, and timing separate; no weighted quality score exists.
+
 Milestone 8 realizes the transport boundary as a deliberately small FastAPI adapter. `bootstrap.py` is the sole trusted composition root and selects configuration, SQLAlchemy Unit of Work, fixture version, the seven-tool registry, gateway limits, policy/catalog, deterministic demo reasoner, clock/identifiers, principal provider, and routes. Request data cannot select implementations. Schema migration remains an explicit Alembic operator step; application startup never calls `create_all` or upgrades the database.
 
 The JSON API accepts one strict provider-neutral `SecurityAlert`, durably records it with ingestion audit, and invokes triage only through `TriageOrchestrator`. Duplicate identical alerts are idempotent and conflicting reuse of an alert identifier is rejected. The empty triage command schema prevents clients from submitting tools, reasoners, result fields, policy versions, approvals, execution claims, fixture paths, or database configuration.

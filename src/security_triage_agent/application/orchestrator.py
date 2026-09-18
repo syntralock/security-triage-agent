@@ -294,7 +294,7 @@ class TriageOrchestrator:
                 if existing is None:
                     return False
                 for action in decision.result.recommended_actions:
-                    uow.actions.add(execution_id, action)
+                    uow.actions.add(execution_id, action, decision.policy_version)
                 if decision.result.recommended_actions:
                     uow.flush()
                 uow.triage_results.add(self._ids.next_id("result"), execution_id, decision.result)

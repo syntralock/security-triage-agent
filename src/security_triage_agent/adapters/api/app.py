@@ -4,17 +4,24 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import parse_qs
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from security_triage_agent.adapters.api.csrf import CsrfProtector
 from security_triage_agent.application.action_catalog import ActionCatalog
 from security_triage_agent.application.alert_service import (
     AlertConflictError,
     AlertIngestionService,
+)
+from security_triage_agent.application.approval_service import (
+    ApprovalService,
+    WorkflowError,
+    WorkflowErrorCode,
 )
 from security_triage_agent.application.orchestrator import TriageOrchestrator
 from security_triage_agent.application.ports.auth import (
@@ -22,7 +29,7 @@ from security_triage_agent.application.ports.auth import (
     Principal,
     PrincipalProvider,
 )
-from security_triage_agent.application.ports.reasoner import IdentifierGenerator
+from security_triage_agent.application.ports.reasoner import Clock, IdentifierGenerator
 from security_triage_agent.application.ports.repositories import UnitOfWork
 from security_triage_agent.domain.alerts import SecurityAlert
 
@@ -39,6 +46,15 @@ class TriageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    reason: str = Field(min_length=1, max_length=2_000)
+
+
+class ExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 @dataclass(frozen=True, slots=True)
 class AppDependencies:
     uow_factory: Callable[[], UnitOfWork]
@@ -48,6 +64,8 @@ class AppDependencies:
     authorization: AuthorizationService
     identifiers: IdentifierGenerator
     action_catalog: ActionCatalog
+    approval_service: ApprovalService
+    clock: Clock
     max_request_bytes: int = 65_536
 
 
@@ -55,6 +73,7 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
     app = FastAPI(title="Security Triage Agent", version="0.1.0")
     templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
     app.state.dependencies = dependencies
+    csrf = CsrfProtector()
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, _error: RequestValidationError) -> JSONResponse:
@@ -91,6 +110,16 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
             ).model_dump(),
         )
 
+    @app.exception_handler(WorkflowError)
+    async def workflow_error(_request: Request, error: WorkflowError) -> JSONResponse:
+        status_code = 404 if error.code is WorkflowErrorCode.ACTION_NOT_FOUND else 409
+        return JSONResponse(
+            status_code=status_code,
+            content=ErrorResponse(
+                code=error.code.value, message="The action workflow request was not permitted."
+            ).model_dump(),
+        )
+
     def principal() -> Principal:
         value = dependencies.principal_provider.current_principal()
         if value is None:
@@ -105,6 +134,11 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
     def analyst(identity: Annotated[Principal, Depends(principal)]) -> Principal:
         if not dependencies.authorization.may_ingest_or_triage(identity):
             raise HTTPException(status_code=403, detail="Access denied")
+        return identity
+
+    def reviewer(identity: Annotated[Principal, Depends(principal)]) -> Principal:
+        if not dependencies.authorization.may_review(identity):
+            raise HTTPException(status_code=403, detail="Reviewer authority required")
         return identity
 
     @app.middleware("http")
@@ -268,17 +302,91 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         payload = execution_payload(execution_id)
         return {"audit": payload["audit"]}
 
+    def action_payload(action_id: str) -> dict[str, Any]:
+        with dependencies.uow_factory() as uow:
+            persisted = uow.actions.get_persisted(action_id)
+            approval = uow.approvals.get_for_action(action_id)
+            execution = uow.action_executions.get_for_action(action_id)
+            audit = uow.audit.list_for_target("recommended_action", action_id)
+        if persisted is None:
+            raise HTTPException(status_code=404, detail="Action not found")
+        definition = dependencies.action_catalog.lookup(persisted.action.catalog_action_id)
+        return {
+            "action": persisted.action.model_dump(mode="json"),
+            "action_digest": persisted.action.digest,
+            "policy_version": persisted.policy_version,
+            "risk": definition.risk.value if definition else "UNKNOWN",
+            "approval_required": definition.approval_required if definition else False,
+            "execution_support": definition.execution_support.value if definition else "UNKNOWN",
+            "approval": approval.model_dump(mode="json") if approval else None,
+            "approval_state": (
+                "EXPIRED"
+                if approval
+                and approval.expires_at
+                and approval.expires_at <= dependencies.clock.now()
+                else approval.decision.value
+                if approval
+                else "PENDING"
+            ),
+            "execution": execution.model_dump(mode="json") if execution else None,
+            "audit": [item.model_dump(mode="json") for item in audit],
+        }
+
+    @app.get("/api/actions/{action_id}")
+    def get_action(
+        action_id: str, _identity: Annotated[Principal, Depends(viewer)]
+    ) -> dict[str, Any]:
+        return action_payload(action_id)
+
+    @app.post("/api/actions/{action_id}/approve")
+    def approve_action(
+        action_id: str,
+        body: DecisionRequest,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> dict[str, Any]:
+        approval = dependencies.approval_service.approve(
+            action_id, identity.principal_id, body.reason
+        )
+        return {"approval": approval.model_dump(mode="json")}
+
+    @app.post("/api/actions/{action_id}/reject")
+    def reject_action(
+        action_id: str,
+        body: DecisionRequest,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> dict[str, Any]:
+        approval = dependencies.approval_service.reject(
+            action_id, identity.principal_id, body.reason
+        )
+        return {"approval": approval.model_dump(mode="json")}
+
+    @app.post("/api/actions/{action_id}/execute")
+    def execute_action(
+        action_id: str,
+        _body: ExecuteRequest,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> dict[str, Any]:
+        outcome = dependencies.approval_service.execute(action_id, identity.principal_id)
+        return {
+            "durable": outcome.durable,
+            "execution": outcome.record.model_dump(mode="json"),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     def alert_list(
         request: Request, identity: Annotated[Principal, Depends(viewer)]
     ) -> HTMLResponse:
         with dependencies.uow_factory() as uow:
             alerts = uow.alerts.list_recent()
-        return templates.TemplateResponse(
+        session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
+        response = templates.TemplateResponse(
             request,
             "alerts.html",
-            {"alerts": alerts, "principal": identity},
+            {"alerts": alerts, "principal": identity, "csrf_token": token},
         )
+        if created:
+            response.set_cookie(csrf.cookie_name, session_id, httponly=True, samesite="strict")
+        return response
 
     @app.get("/alerts/{alert_id}", response_class=HTMLResponse)
     def alert_detail(
@@ -291,11 +399,20 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
             executions = uow.executions.list_for_alert(alert_id)
         if alert is None:
             raise HTTPException(status_code=404, detail="Alert not found")
-        return templates.TemplateResponse(
+        session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
+        response = templates.TemplateResponse(
             request,
             "alert_detail.html",
-            {"alert": alert, "executions": executions, "principal": identity},
+            {
+                "alert": alert,
+                "executions": executions,
+                "principal": identity,
+                "csrf_token": token,
+            },
         )
+        if created:
+            response.set_cookie(csrf.cookie_name, session_id, httponly=True, samesite="strict")
+        return response
 
     @app.get("/executions/{execution_id}", response_class=HTMLResponse)
     def execution_detail(
@@ -304,10 +421,90 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         identity: Annotated[Principal, Depends(viewer)],
     ) -> HTMLResponse:
         payload = execution_payload(execution_id)
-        return templates.TemplateResponse(
+        session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
+        response = templates.TemplateResponse(
             request,
             "execution_detail.html",
-            {**payload, "principal": identity},
+            {
+                **payload,
+                "principal": identity,
+                "reviewer_authorized": dependencies.authorization.may_review(identity),
+                "csrf_token": token,
+            },
         )
+        if created:
+            response.set_cookie(csrf.cookie_name, session_id, httponly=True, samesite="strict")
+        return response
+
+    @app.get("/actions/{action_id}", response_class=HTMLResponse)
+    def action_detail(
+        request: Request,
+        action_id: str,
+        identity: Annotated[Principal, Depends(viewer)],
+    ) -> HTMLResponse:
+        payload = action_payload(action_id)
+        session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
+        response = templates.TemplateResponse(
+            request,
+            "action_detail.html",
+            {
+                **payload,
+                "principal": identity,
+                "reviewer_authorized": dependencies.authorization.may_review(identity),
+                "csrf_token": token,
+            },
+        )
+        if created:
+            response.set_cookie(csrf.cookie_name, session_id, httponly=True, samesite="strict")
+        return response
+
+    async def browser_form(request: Request) -> dict[str, str]:
+        if request.headers.get("content-type", "").split(";", 1)[0] != (
+            "application/x-www-form-urlencoded"
+        ):
+            raise HTTPException(status_code=400, detail="Invalid form")
+        values = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True)
+        return {key: items[-1] for key, items in values.items() if items}
+
+    def verify_csrf(request: Request, form: dict[str, str]) -> None:
+        if not csrf.validate(request.cookies.get(csrf.cookie_name), form.get("csrf_token")):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    @app.post("/actions/{action_id}/approve")
+    async def browser_approve(
+        request: Request,
+        action_id: str,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> RedirectResponse:
+        form = await browser_form(request)
+        verify_csrf(request, form)
+        dependencies.approval_service.approve(
+            action_id, identity.principal_id, form.get("reason", "No reason supplied.")
+        )
+        return RedirectResponse(f"/actions/{action_id}", status_code=303)
+
+    @app.post("/actions/{action_id}/reject")
+    async def browser_reject(
+        request: Request,
+        action_id: str,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> RedirectResponse:
+        form = await browser_form(request)
+        verify_csrf(request, form)
+        dependencies.approval_service.reject(
+            action_id, identity.principal_id, form.get("reason", "No reason supplied.")
+        )
+        return RedirectResponse(f"/actions/{action_id}", status_code=303)
+
+    @app.post("/actions/{action_id}/execute")
+    async def browser_execute(
+        request: Request,
+        action_id: str,
+        identity: Annotated[Principal, Depends(reviewer)],
+    ) -> RedirectResponse:
+        form = await browser_form(request)
+        verify_csrf(request, form)
+        dependencies.approval_service.execute(action_id, identity.principal_id)
+        return RedirectResponse(f"/actions/{action_id}", status_code=303)
 
     return app

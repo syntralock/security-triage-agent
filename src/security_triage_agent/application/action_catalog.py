@@ -16,7 +16,7 @@ class ActionRisk(StrEnum):
 
 
 class ExecutionSupport(StrEnum):
-    NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
+    SIMULATED_ONLY = "SIMULATED_ONLY"
 
 
 class NoParameters(BaseModel):
@@ -93,7 +93,7 @@ def initial_action_catalog() -> ActionCatalog:
             target_types=frozenset({target_type}),
             risk=ActionRisk.HIGH_IMPACT,
             approval_required=True,
-            execution_support=ExecutionSupport.NOT_IMPLEMENTED,
+            execution_support=ExecutionSupport.SIMULATED_ONLY,
             parameters_model=parameters_model,
         )
 

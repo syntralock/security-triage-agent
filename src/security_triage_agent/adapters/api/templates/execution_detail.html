@@ -17,8 +17,8 @@
 {% for item in result.evidence %}<tr><td>{{ item.evidence_id }}</td><td>{{ item.source_type }} / {{ item.source_reference }}</td><td>{{ item.source_version }}</td><td>{{ item.summary }}</td></tr>{% else %}<tr><td colspan="4">No evidence.</td></tr>{% endfor %}
 </tbody></table></section>
 <section><h3>Recommended actions</h3><table><thead><tr><th>Action</th><th>Target</th><th>Risk</th><th>Approval</th><th>Execution</th></tr></thead><tbody>
-{% for action in actions %}<tr><td>{{ action.catalog_action_id }}<br>{{ action.rationale }}</td><td>{{ action.target.identifier }}</td><td>{{ action.risk }}</td><td>{% if action.approval_required %}<strong>REQUIRED</strong>{% else %}Not required{% endif %}</td><td>{{ action.execution_support }}</td></tr>{% else %}<tr><td colspan="5">No recommended actions.</td></tr>{% endfor %}
-</tbody></table><p>No approval or execution controls are available in this milestone.</p></section>
+{% for action in actions %}<tr><td><a href="/actions/{{ action.action_id }}">{{ action.catalog_action_id }}</a><br>{{ action.rationale }}</td><td>{{ action.target.identifier }}</td><td>{{ action.risk }}</td><td>{% if action.approval_required %}<strong>REQUIRED</strong>{% else %}Not required{% endif %}</td><td>{{ action.execution_support }}</td></tr>{% else %}<tr><td colspan="5">No recommended actions.</td></tr>{% endfor %}
+</tbody></table><p>Every supported execution is a simulation. No real remediation is available.</p></section>
 {% endif %}
 <section><h3>Tool attempts</h3><table><thead><tr><th>Call</th><th>Tool</th><th>Authorization</th><th>Outcome</th></tr></thead><tbody>
 {% for item in tools %}<tr><td>{{ item.call_id }}</td><td>{{ item.tool_name }}</td><td>{{ item.authorization }}</td><td>{{ item.outcome }}</td></tr>{% else %}<tr><td colspan="4">No tool attempts.</td></tr>{% endfor %}</tbody></table></section>

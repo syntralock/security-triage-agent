@@ -1,10 +1,12 @@
 """Trusted composition root for the local synthetic application."""
 
+from datetime import timedelta
 from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
+from security_triage_agent.adapters.actions import SimulatedActionExecutor
 from security_triage_agent.adapters.api.app import AppDependencies, create_app
 from security_triage_agent.adapters.persistence.uow import SqlAlchemyUnitOfWork, create_engine
 from security_triage_agent.adapters.reasoners.demo import DemoReasoner
@@ -25,6 +27,7 @@ from security_triage_agent.adapters.tools import (
 from security_triage_agent.adapters.tools.fixture_models import load_fixture_dataset
 from security_triage_agent.application.action_catalog import initial_action_catalog
 from security_triage_agent.application.alert_service import AlertIngestionService
+from security_triage_agent.application.approval_service import ApprovalService
 from security_triage_agent.application.orchestration_contracts import OrchestrationLimits
 from security_triage_agent.application.orchestrator import TriageOrchestrator
 from security_triage_agent.application.policy import DeterministicPolicy
@@ -73,14 +76,26 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         orchestration_limits=OrchestrationLimits(),
         gateway_limits=gateway_limits,
     )
+    authorization = AuthorizationService()
+    approval_service = ApprovalService(
+        uow_factory=uow_factory,
+        catalog=catalog,
+        executor=SimulatedActionExecutor(),
+        authorization=authorization,
+        clock=clock,
+        identifiers=identifiers,
+        approval_lifetime=timedelta(seconds=settings.approval_lifetime_seconds),
+    )
     return AppDependencies(
         uow_factory=uow_factory,
         ingestion=AlertIngestionService(uow_factory, clock, identifiers),
         orchestrator=orchestrator,
         principal_provider=DevelopmentPrincipalProvider(),
-        authorization=AuthorizationService(),
+        authorization=authorization,
         identifiers=identifiers,
         action_catalog=catalog,
+        approval_service=approval_service,
+        clock=clock,
         max_request_bytes=settings.max_request_bytes,
     )
 

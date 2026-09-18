@@ -1,6 +1,6 @@
 # Proposed Repository Structure
 
-Status: approved structure, updated through Milestone 8. Later directories remain deferred to their owning milestones.
+Status: approved structure, updated through Milestone 9. Later directories remain deferred to their owning milestones.
 
 ```text
 security-triage-agent/
@@ -50,6 +50,7 @@ security-triage-agent/
 │   │   │   ├── clock.py
 │   │   │   └── executors.py
 │   │   ├── alert_service.py
+│   │   ├── approval_service.py
 │   │   ├── policy.py
 │   │   ├── approval_service.py
 │   │   └── evaluation_service.py
@@ -57,6 +58,7 @@ security-triage-agent/
 │   │   ├── __init__.py
 │   │   ├── api/
 │   │   │   ├── app.py
+│   │   │   ├── csrf.py
 │   │   │   └── templates/
 │   │   ├── alerts/
 │   │   │   ├── sentinel.py
@@ -75,7 +77,7 @@ security-triage-agent/
 │   │   │   ├── repositories.py
 │   │   │   └── uow.py
 │   │   └── actions/
-│   │       └── noop.py
+│   │       └── simulated.py
 │   ├── bootstrap.py
 │   ├── config.py
 │   └── logging.py

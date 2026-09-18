@@ -1,15 +1,27 @@
 """HTTP-boundary tests for the synthetic Milestone 8 application."""
 
 import json
+import re
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine as sa_create_engine
+from sqlalchemy.orm import Session
 
+from security_triage_agent.adapters.actions import SimulatedActionExecutor
 from security_triage_agent.adapters.api.app import AppDependencies, create_app
+from security_triage_agent.adapters.persistence.models import RecommendedActionRow
+from security_triage_agent.application.approval_service import (
+    ApprovalService,
+    WorkflowError,
+    WorkflowErrorCode,
+)
 from security_triage_agent.application.ports.auth import Principal, PrincipalRole
+from security_triage_agent.application.ports.executors import ActionExecutionResult
 from security_triage_agent.bootstrap import build_dependencies
 from security_triage_agent.config import Environment, Settings
 
@@ -25,6 +37,24 @@ class StaticPrincipalProvider:
 class BrokenUnitOfWorkFactory:
     def __call__(self) -> None:
         raise RuntimeError("sqlite:////private/sensitive/path.db")
+
+
+class MutableClock:
+    def __init__(self, value: datetime) -> None:
+        self.value = value
+
+    def now(self) -> datetime:
+        return self.value
+
+    def monotonic_ms(self) -> int:
+        return 0
+
+
+class FailingSimulator:
+    mode = "SIMULATED"
+
+    def execute(self, _action: object) -> ActionExecutionResult:
+        raise RuntimeError("synthetic simulator failure")
 
 
 def migrate(path: Path) -> None:
@@ -58,6 +88,19 @@ def ingest(client: TestClient, alert: dict[str, object]) -> None:
     assert response.status_code == 201
 
 
+def triage_high_action(client: TestClient, fixture_root: Path) -> tuple[str, str]:
+    alert = fixture_alert(fixture_root, index=1)
+    ingest(client, alert)
+    response = client.post(
+        f"/api/alerts/{alert['alert_id']}/triage",
+        headers={"Idempotency-Key": "triage-action"},
+        json={},
+    )
+    assert response.status_code == 200
+    result = response.json()["result"]
+    return result["recommended_actions"][0]["action_id"], response.json()["execution_id"]
+
+
 def test_ingest_triage_and_read_views_are_durable(tmp_path: Path, fixture_root: Path) -> None:
     deps = dependencies(tmp_path, fixture_root)
     alert = fixture_alert(fixture_root, index=1)
@@ -76,14 +119,15 @@ def test_ingest_triage_and_read_views_are_durable(tmp_path: Path, fixture_root: 
         assert triage.status_code == 200
         body = triage.json()
         assert body["durable"] is True
-        assert body["result"]["disposition"] == "NEEDS_REVIEW"
+        assert body["result"]["disposition"] == "MALICIOUS"
         execution_id = body["execution_id"]
 
         result = client.get(f"/api/executions/{execution_id}")
         assert result.status_code == 200
         result_body = result.json()
         assert result_body["source_severity"] == "HIGH"
-        assert result_body["result"]["severity"] == "HIGH"
+        assert result_body["result"]["severity"] == "CRITICAL"
+        assert result_body["result"]["confidence"] == "1.0"
         assert result_body["tools"][0]["tool_name"] == "get_user_risk"
         assert result_body["policy"]["policy_version"]
         assert client.get(f"/api/executions/{execution_id}/tools").status_code == 200
@@ -98,7 +142,7 @@ def test_ingest_triage_and_read_views_are_durable(tmp_path: Path, fixture_root: 
         assert "Source severity" in page.text
         assert "Assessed severity" in page.text
         assert "REQUIRED" in page.text
-        assert "NOT_IMPLEMENTED" in page.text
+        assert "SIMULATED_ONLY" in page.text
         assert "Policy decision" in page.text
         assert "<form" not in page.text
         assert "<button" not in page.text
@@ -226,3 +270,290 @@ def test_production_cannot_use_development_identity(fixture_root: Path) -> None:
         assert str(error) == "development principal cannot be used in production"
     else:
         raise AssertionError("production composition must fail closed")
+
+
+def test_reviewer_approval_and_simulation_survive_restart(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    with TestClient(create_app(deps)) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+        denied = client.post(f"/api/actions/{action_id}/execute", json={})
+        assert denied.status_code == 409
+        assert denied.json()["code"] == "APPROVAL_MISSING"
+
+        injected = client.post(
+            f"/api/actions/{action_id}/approve",
+            json={
+                "reason": "Synthetic reviewer approval.",
+                "reviewer_id": "attacker",
+                "expires_at": "2099-01-01T00:00:00Z",
+                "policy_version": "attacker",
+                "target": {"identifier": "other"},
+            },
+        )
+        assert injected.status_code == 422
+
+        approved = client.post(
+            f"/api/actions/{action_id}/approve",
+            json={"reason": "Synthetic reviewer approval."},
+        )
+        assert approved.status_code == 200
+        approval = approved.json()["approval"]
+        assert approval["reviewer_id"] == "development-reviewer"
+        assert approval["expires_at"] is not None
+        assert (
+            approved.json()
+            == client.post(
+                f"/api/actions/{action_id}/approve",
+                json={"reason": "Synthetic reviewer approval."},
+            ).json()
+        )
+
+        executed = client.post(f"/api/actions/{action_id}/execute", json={})
+        assert executed.status_code == 200
+        record = executed.json()["execution"]
+        assert record["mode"] == "SIMULATED"
+        assert record["outcome"] == "SIMULATED_SUCCESS"
+        assert "no real remediation" in record["result"]["message"].lower()
+        assert client.post(f"/api/actions/{action_id}/execute", json={}).json() == executed.json()
+
+    reopened = build_dependencies(
+        Settings(
+            environment=Environment.TEST,
+            database_url=f"sqlite:///{tmp_path / 'api.db'}",
+            fixture_path=str(fixture_root),
+        )
+    )
+    with TestClient(create_app(reopened)) as client:
+        payload = client.get(f"/api/actions/{action_id}").json()
+        assert payload["approval_state"] == "APPROVED"
+        assert payload["execution"]["state"] == "SUCCEEDED"
+        assert [event["event_type"] for event in payload["audit"]] == [
+            "action.execution_denied",
+            "action.approved",
+            "action.simulation_started",
+            "action.simulation_succeeded",
+        ]
+
+
+def test_rejection_is_terminal_and_has_no_expiry(tmp_path: Path, fixture_root: Path) -> None:
+    with TestClient(create_app(dependencies(tmp_path, fixture_root))) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+        rejected = client.post(
+            f"/api/actions/{action_id}/reject", json={"reason": "Not authorized."}
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["approval"]["expires_at"] is None
+        assert (
+            client.post(
+                f"/api/actions/{action_id}/approve", json={"reason": "Changed mind."}
+            ).json()["code"]
+            == "DECISION_CONFLICT"
+        )
+        assert (
+            client.post(f"/api/actions/{action_id}/execute", json={}).json()["code"]
+            == "APPROVAL_REJECTED"
+        )
+
+
+def test_analyst_cannot_review_or_execute(tmp_path: Path, fixture_root: Path) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    with TestClient(create_app(deps)) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+    analyst = Principal(
+        principal_id="development-analyst", role=PrincipalRole.ANALYST, development_only=True
+    )
+    with TestClient(
+        create_app(replace(deps, principal_provider=StaticPrincipalProvider(analyst)))
+    ) as client:
+        assert (
+            client.post(
+                f"/api/actions/{action_id}/approve", json={"reason": "Unauthorized."}
+            ).status_code
+            == 403
+        )
+        assert client.post(f"/api/actions/{action_id}/execute", json={}).status_code == 403
+        page = client.get(f"/actions/{action_id}")
+        assert page.status_code == 200
+        assert "Approve exact action" not in page.text
+
+
+def test_browser_forms_require_bound_csrf_and_escape_reason(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    with TestClient(create_app(dependencies(tmp_path, fixture_root))) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+        page = client.get(f"/actions/{action_id}")
+        assert "HIGH_IMPACT" in page.text
+        assert "SIMULATED ONLY" in page.text
+        token_match = re.search(r'name="csrf_token" value="([a-f0-9]+)"', page.text)
+        assert token_match is not None
+        assert (
+            client.post(f"/actions/{action_id}/approve", data={"reason": "missing"}).status_code
+            == 403
+        )
+        assert (
+            client.post(
+                f"/actions/{action_id}/approve",
+                data={"csrf_token": "0" * 64, "reason": "invalid"},
+            ).status_code
+            == 403
+        )
+        hostile = "<script>alert('reviewer')</script>"
+        approved = client.post(
+            f"/actions/{action_id}/approve",
+            data={"csrf_token": token_match.group(1), "reason": hostile},
+            follow_redirects=False,
+        )
+        assert approved.status_code == 303
+        rendered = client.get(f"/actions/{action_id}")
+        assert hostile not in rendered.text
+        assert "&lt;script&gt;" in rendered.text
+        assert client.get(f"/actions/{action_id}/execute").status_code == 405
+
+
+def test_expired_and_stale_approvals_fail_closed(tmp_path: Path, fixture_root: Path) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    with TestClient(create_app(deps)) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+    clock = MutableClock(datetime(2026, 1, 15, 12, tzinfo=UTC))
+    service = ApprovalService(
+        uow_factory=deps.uow_factory,
+        catalog=deps.action_catalog,
+        executor=SimulatedActionExecutor(),
+        authorization=deps.authorization,
+        clock=clock,
+        identifiers=deps.identifiers,
+        approval_lifetime=timedelta(minutes=15),
+    )
+    approval = service.approve(action_id, "development-reviewer", "Exact action reviewed.")
+    assert approval.expires_at == clock.value + timedelta(minutes=15)
+
+    database = tmp_path / "api.db"
+    with Session(sa_create_engine(f"sqlite:///{database}")) as session:
+        row = session.get(RecommendedActionRow, action_id)
+        assert row is not None
+        original = dict(row.domain_data)
+        mutated = dict(original)
+        mutated["target"] = {"entity_type": "USER", "identifier": "user-alex"}
+        row.domain_data = mutated
+        session.commit()
+    try:
+        service.execute(action_id, "development-reviewer")
+    except WorkflowError as error:
+        assert error.code is WorkflowErrorCode.STALE_APPROVAL
+    else:
+        raise AssertionError("materially changed action must not execute")
+
+    with Session(sa_create_engine(f"sqlite:///{database}")) as session:
+        row = session.get(RecommendedActionRow, action_id)
+        assert row is not None
+        row.domain_data = original
+        session.commit()
+    clock.value += timedelta(minutes=16)
+    try:
+        service.execute(action_id, "development-reviewer")
+    except WorkflowError as expired_error:
+        assert expired_error.code.value == WorkflowErrorCode.APPROVAL_EXPIRED.value
+    else:
+        raise AssertionError("expired approval must not execute")
+
+
+def test_simulator_failure_is_durable_and_never_claims_success(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    with TestClient(create_app(deps)) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+    service = ApprovalService(
+        uow_factory=deps.uow_factory,
+        catalog=deps.action_catalog,
+        executor=FailingSimulator(),
+        authorization=deps.authorization,
+        clock=deps.clock,
+        identifiers=deps.identifiers,
+        approval_lifetime=timedelta(minutes=15),
+    )
+    service.approve(action_id, "development-reviewer", "Synthetic failure test.")
+    try:
+        service.execute(action_id, "development-reviewer")
+    except WorkflowError as error:
+        assert error.code is WorkflowErrorCode.EXECUTOR_FAILED
+    else:
+        raise AssertionError("simulator failure must be reported")
+    with deps.uow_factory() as uow:
+        record = uow.action_executions.get_for_action(action_id)
+        audit = uow.audit.list_for_target("recommended_action", action_id)
+    assert record is not None and record.state.value == "FAILED"
+    assert record.outcome == "SIMULATED_FAILURE"
+    assert all(item.event_type != "action.simulation_succeeded" for item in audit)
+
+
+def test_flagship_adversarial_authority_chain(tmp_path: Path, fixture_root: Path) -> None:
+    """Powerful model claims never bypass exact human authorization or simulation."""
+
+    deps = dependencies(tmp_path, fixture_root)
+    with TestClient(create_app(deps)) as client:
+        action_id, _ = triage_high_action(client, fixture_root)
+        action = client.get(f"/api/actions/{action_id}").json()
+        assert action["action"]["catalog_action_id"] == "disable_account"
+        assert action["risk"] == "HIGH_IMPACT"
+        denied = client.post(f"/api/actions/{action_id}/execute", json={})
+        assert denied.json()["code"] == "APPROVAL_MISSING"
+
+    analyst = Principal(
+        principal_id="development-analyst", role=PrincipalRole.ANALYST, development_only=True
+    )
+    with TestClient(
+        create_app(replace(deps, principal_provider=StaticPrincipalProvider(analyst)))
+    ) as client:
+        assert (
+            client.post(
+                f"/api/actions/{action_id}/approve", json={"reason": "Self approval."}
+            ).status_code
+            == 403
+        )
+
+    with TestClient(create_app(deps)) as client:
+        alert_result = client.get(f"/api/actions/{action_id}").json()
+        approved = client.post(
+            f"/api/actions/{action_id}/approve",
+            json={"reason": "Exact synthetic action reviewed."},
+        )
+        assert approved.status_code == 200
+        assert approved.json()["approval"]["action_digest"] == alert_result["action_digest"]
+
+    database = tmp_path / "api.db"
+    with Session(sa_create_engine(f"sqlite:///{database}")) as session:
+        row = session.get(RecommendedActionRow, action_id)
+        assert row is not None
+        original = dict(row.domain_data)
+        changed = dict(original)
+        changed["parameters"] = {"attacker": "changed-material"}
+        row.domain_data = changed
+        session.commit()
+    try:
+        deps.approval_service.execute(action_id, "development-reviewer")
+    except WorkflowError as error:
+        assert error.code is WorkflowErrorCode.STALE_APPROVAL
+    else:
+        raise AssertionError("changed action material used an old approval")
+
+    with Session(sa_create_engine(f"sqlite:///{database}")) as session:
+        row = session.get(RecommendedActionRow, action_id)
+        assert row is not None
+        row.domain_data = original
+        session.commit()
+    outcome = deps.approval_service.execute(action_id, "development-reviewer")
+    assert outcome.record.mode == "SIMULATED"
+    assert outcome.record.outcome == "SIMULATED_SUCCESS"
+    with deps.uow_factory() as uow:
+        events = uow.audit.list_for_target("recommended_action", action_id)
+    event_types = {item.event_type for item in events}
+    assert {
+        "action.execution_denied",
+        "action.approved",
+        "action.simulation_started",
+        "action.simulation_succeeded",
+    } <= event_types

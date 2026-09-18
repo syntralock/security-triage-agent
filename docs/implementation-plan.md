@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–8 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–9 are complete; later milestones still require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -91,6 +91,8 @@ Add FastAPI routes for provider-specific ingestion, execution status/result/audi
 **Acceptance:** a synthetic alert can be submitted and its completed fake-reasoner triage inspected; routes cannot bypass application services.
 
 ## Milestone 9 — Approval workflow and simulated actions
+
+**Status:** complete on 2026-09-18. Milestone 10 has not started and requires explicit approval.
 
 Implement proposed-action persistence, reviewer approve/reject flow, expiry/digest binding, deterministic transition enforcement, and a no-op/synthetic executor with pre-execution revalidation.
 

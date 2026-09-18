@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ action.action_id }} · Security Triage Agent{% endblock %}
+{% block content %}
+<h2>Recommended action <code>{{ action.action_id }}</code></h2>
+<p class="notice"><strong>SIMULATED ONLY.</strong> No real remediation will occur.</p>
+<dl>
+  <dt>Action</dt><dd>{{ action.catalog_action_id }}</dd>
+  <dt>Target</dt><dd>{{ action.target.entity_type }} / {{ action.target.identifier }}</dd>
+  <dt>Parameters</dt><dd><pre>{{ action.parameters | tojson(indent=2) }}</pre></dd>
+  <dt>Risk</dt><dd><strong>{{ risk }}</strong></dd>
+  <dt>Approval required</dt><dd>{{ approval_required }}</dd>
+  <dt>Policy version</dt><dd>{{ policy_version }}</dd>
+  <dt>Action digest</dt><dd><code>{{ action_digest }}</code></dd>
+  <dt>Approval state</dt><dd><strong>{{ approval_state }}</strong></dd>
+  <dt>Execution support</dt><dd>{{ execution_support }}</dd>
+</dl>
+{% if approval %}<section><h3>Durable reviewer decision</h3><p>{{ approval.decision }} by {{ approval.reviewer_id }} at {{ approval.decided_at }}</p><p>{{ approval.reason }}</p>{% if approval.expires_at %}<p>Authorization expires: {{ approval.expires_at }}</p>{% endif %}</section>{% endif %}
+{% if reviewer_authorized and approval_state == "PENDING" %}
+<section><h3>Human review</h3>
+<form method="post" action="/actions/{{ action.action_id }}/approve"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reason <input name="reason" required></label><button type="submit">Approve exact action for simulation</button></form>
+<form method="post" action="/actions/{{ action.action_id }}/reject"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reason <input name="reason" required></label><button type="submit">Reject action</button></form>
+</section>
+{% endif %}
+{% if reviewer_authorized and approval_state == "APPROVED" and not execution %}
+<form method="post" action="/actions/{{ action.action_id }}/execute"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Run simulation only</button></form>
+{% endif %}
+{% if execution %}<section><h3>Simulation record</h3><pre>{{ execution | tojson(indent=2) }}</pre><p>This record describes a simulation, not real remediation.</p></section>{% endif %}
+<section><h3>Action audit timeline</h3><ol>{% for item in audit %}<li>{{ item.occurred_at }} — {{ item.event_type }} — {{ item.outcome }}<pre>{{ item.data | tojson }}</pre></li>{% else %}<li>No action workflow events.</li>{% endfor %}</ol></section>
+{% endblock %}

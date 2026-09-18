@@ -10,7 +10,7 @@ from security_triage_agent.domain._base import (
     UtcDatetime,
     Version,
 )
-from security_triage_agent.domain.actions import ActionState
+from security_triage_agent.domain.actions import ActionProposal, ActionState
 from security_triage_agent.domain.states import TriageExecutionState
 
 
@@ -33,6 +33,14 @@ class ActionExecutionRecord(DomainModel):
     completed_at: UtcDatetime | None = None
     outcome: Identifier | None = None
     failure_category: Identifier | None = None
+    mode: str = "SIMULATED"
+    result: dict[str, JsonValue] | None = None
+
+
+class PersistedAction(DomainModel):
+    execution_id: Identifier
+    policy_version: Version
+    action: ActionProposal
 
 
 class AuditOutcome(StrEnum):

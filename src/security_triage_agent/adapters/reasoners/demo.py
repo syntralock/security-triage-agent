@@ -32,21 +32,24 @@ class DemoReasoner:
         if user is not None and context.alert.source_severity in {Severity.HIGH, Severity.CRITICAL}:
             actions = (
                 ActionProposal(
-                    action_id=f"demo-revoke-{context.alert.alert_id}",
-                    catalog_action_id="revoke_sessions",
+                    action_id=f"demo-disable-{context.alert.alert_id}",
+                    catalog_action_id="disable_account",
                     target=user,
                     parameters={},
                     rationale=(
-                        "Synthetic high-severity demo alert warrants analyst review of session "
-                        "revocation."
+                        "Synthetic high-severity demo alert warrants analyst review of account "
+                        "disablement."
                     ),
                 ),
             )
+        high_severity_demo = context.alert.source_severity in {Severity.HIGH, Severity.CRITICAL}
         return ReasonerCandidate(
             candidate=CandidateAssessment(
-                disposition=Disposition.NEEDS_REVIEW,
-                severity=context.alert.source_severity,
-                confidence=Decimal("0.5"),
+                disposition=(
+                    Disposition.MALICIOUS if high_severity_demo else Disposition.NEEDS_REVIEW
+                ),
+                severity=Severity.CRITICAL if high_severity_demo else context.alert.source_severity,
+                confidence=Decimal("1.0") if high_severity_demo else Decimal("0.5"),
                 evidence=tuple(item.reference for item in context.evidence),
                 reasoning_summary=(
                     "Deterministic demo triage collected available synthetic evidence; "

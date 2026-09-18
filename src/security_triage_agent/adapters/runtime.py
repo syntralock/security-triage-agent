@@ -25,7 +25,7 @@ class DevelopmentPrincipalProvider(PrincipalProvider):
 
     def current_principal(self) -> Principal:
         return Principal(
-            principal_id="development-analyst",
-            role=PrincipalRole.ANALYST,
+            principal_id="development-reviewer",
+            role=PrincipalRole.REVIEWER,
             development_only=True,
         )

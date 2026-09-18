@@ -74,6 +74,7 @@ class RecommendedActionRow(Base):
     target: Mapped[dict[str, Any]] = mapped_column(JSON)
     parameters: Mapped[dict[str, Any]] = mapped_column(JSON)
     action_digest: Mapped[str] = mapped_column(String(71))
+    policy_version: Mapped[str] = mapped_column(String(64), default="1.0.0")
     rationale: Mapped[str] = mapped_column(Text)
     domain_data: Mapped[dict[str, Any]] = mapped_column(JSON)
 
@@ -92,7 +93,7 @@ class ApprovalDecisionRow(Base):
         ),
     )
     approval_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    action_id: Mapped[str] = mapped_column(ForeignKey("recommended_actions.action_id"))
+    action_id: Mapped[str] = mapped_column(ForeignKey("recommended_actions.action_id"), unique=True)
     action_digest: Mapped[str] = mapped_column(String(71))
     reviewer_id: Mapped[str] = mapped_column(String(128))
     decision: Mapped[str] = mapped_column(String(16))
@@ -106,12 +107,14 @@ class ApprovalDecisionRow(Base):
 class ActionExecutionRow(Base):
     __tablename__ = "action_executions"
     action_execution_id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    action_id: Mapped[str] = mapped_column(ForeignKey("recommended_actions.action_id"))
+    action_id: Mapped[str] = mapped_column(ForeignKey("recommended_actions.action_id"), unique=True)
     state: Mapped[str] = mapped_column(String(32))
     started_at: Mapped[str] = mapped_column(String(40))
     completed_at: Mapped[str | None] = mapped_column(String(40))
     outcome: Mapped[str | None] = mapped_column(String(128))
     failure_category: Mapped[str | None] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(32), default="SIMULATED")
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class AuditEventRow(Base):

@@ -118,7 +118,7 @@ def test_initial_catalog_is_exact_immutable_and_high_impact(catalog: ActionCatal
         assert definition.version == "1.0.0"
         assert definition.risk is ActionRisk.HIGH_IMPACT
         assert definition.approval_required is True
-        assert definition.execution_support is ExecutionSupport.NOT_IMPLEMENTED
+        assert definition.execution_support is ExecutionSupport.SIMULATED_ONLY
         with pytest.raises(FrozenInstanceError):
             definition.approval_required = False  # type: ignore[misc]
 
@@ -131,7 +131,7 @@ def test_catalog_rejects_duplicate_and_invalid_configuration() -> None:
         target_types=frozenset({EntityType.USER}),
         risk=ActionRisk.HIGH_IMPACT,
         approval_required=True,
-        execution_support=ExecutionSupport.NOT_IMPLEMENTED,
+        execution_support=ExecutionSupport.SIMULATED_ONLY,
         parameters_model=NoParameters,
     )
     with pytest.raises(ActionCatalogError, match="duplicate"):
@@ -146,7 +146,7 @@ def test_catalog_rejects_duplicate_and_invalid_configuration() -> None:
                     target_types=frozenset({EntityType.USER}),
                     risk=ActionRisk.HIGH_IMPACT,
                     approval_required=False,
-                    execution_support=ExecutionSupport.NOT_IMPLEMENTED,
+                    execution_support=ExecutionSupport.SIMULATED_ONLY,
                     parameters_model=NoParameters,
                 )
             ]

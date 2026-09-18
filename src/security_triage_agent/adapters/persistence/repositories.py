@@ -18,6 +18,7 @@ from security_triage_agent.adapters.persistence.models import (
 from security_triage_agent.application.persistence import (
     ActionExecutionRecord,
     AuditEvent,
+    PersistedAction,
     TriageExecutionRecord,
 )
 from security_triage_agent.application.tool_gateway import ToolInvocationRecord
@@ -212,7 +213,7 @@ class SqlAlchemyActionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def add(self, execution_id: str, action: ActionProposal) -> None:
+    def add(self, execution_id: str, action: ActionProposal, policy_version: str = "1.0.0") -> None:
         data = _json(action)
         self._session.add(
             RecommendedActionRow(
@@ -222,6 +223,7 @@ class SqlAlchemyActionRepository:
                 target=data["target"],
                 parameters=data["parameters"],
                 action_digest=action.digest,
+                policy_version=policy_version,
                 rationale=action.rationale,
                 domain_data=data,
             )
@@ -230,6 +232,16 @@ class SqlAlchemyActionRepository:
     def get(self, action_id: str) -> ActionProposal | None:
         row = self._session.get(RecommendedActionRow, action_id)
         return ActionProposal.model_validate(row.domain_data) if row else None
+
+    def get_persisted(self, action_id: str) -> PersistedAction | None:
+        row = self._session.get(RecommendedActionRow, action_id)
+        if row is None:
+            return None
+        return PersistedAction(
+            execution_id=row.execution_id,
+            policy_version=row.policy_version,
+            action=ActionProposal.model_validate(row.domain_data),
+        )
 
 
 class SqlAlchemyApprovalRepository:
@@ -256,6 +268,12 @@ class SqlAlchemyApprovalRepository:
         row = self._session.get(ApprovalDecisionRow, approval_id)
         return ApprovalRecord.model_validate(row.domain_data) if row else None
 
+    def get_for_action(self, action_id: str) -> ApprovalRecord | None:
+        row = self._session.scalar(
+            select(ApprovalDecisionRow).where(ApprovalDecisionRow.action_id == action_id)
+        )
+        return ApprovalRecord.model_validate(row.domain_data) if row else None
+
 
 class SqlAlchemyActionExecutionRepository:
     def __init__(self, session: Session) -> None:
@@ -271,6 +289,8 @@ class SqlAlchemyActionExecutionRepository:
                 completed_at=execution.completed_at.isoformat() if execution.completed_at else None,
                 outcome=execution.outcome,
                 failure_category=execution.failure_category,
+                mode=execution.mode,
+                result=execution.result,
             )
         )
 
@@ -287,8 +307,27 @@ class SqlAlchemyActionExecutionRepository:
                 "completed_at": row.completed_at,
                 "outcome": row.outcome,
                 "failure_category": row.failure_category,
+                "mode": row.mode,
+                "result": row.result,
             }
         )
+
+    def get_for_action(self, action_id: str) -> ActionExecutionRecord | None:
+        row = self._session.scalar(
+            select(ActionExecutionRow).where(ActionExecutionRow.action_id == action_id)
+        )
+        return self.get(row.action_execution_id) if row else None
+
+    def replace(self, execution: ActionExecutionRecord) -> None:
+        row = self._session.get(ActionExecutionRow, execution.action_execution_id)
+        if row is None:
+            raise ValueError("action execution does not exist")
+        row.state = execution.state.value
+        row.completed_at = execution.completed_at.isoformat() if execution.completed_at else None
+        row.outcome = execution.outcome
+        row.failure_category = execution.failure_category
+        row.mode = execution.mode
+        row.result = execution.result
 
 
 class SqlAlchemyAuditRepository:

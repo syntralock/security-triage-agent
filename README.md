@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–8 are complete through a small FastAPI transport and read-only review UI. The local application uses a deterministic demo reasoner, synthetic fixture tools, deterministic policy, and durable audit records. Real provider integrations, production authentication, approval services, and remediation behavior have not been implemented.
+Milestones 0–9 are complete through a small FastAPI transport, human approval boundary, and deterministic simulated-action workflow. The local application uses a deterministic demo reasoner, synthetic fixture tools, deterministic policy, immutable approval facts, and durable audit records. Real provider integrations, production authentication, and real remediation have not been implemented.
 
 For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
 
@@ -20,7 +20,7 @@ Start the local development server after applying migrations:
 .venv/bin/uvicorn security_triage_agent.bootstrap:create_default_app --factory --reload
 ```
 
-The configured principal is the fixed synthetic `development-analyst`. It is selected by trusted composition, not HTTP input, and production configuration fails closed. This is not production authentication or tenant authorization.
+The configured principal is the fixed synthetic `development-reviewer`. It is selected by trusted composition, not HTTP input, and production configuration fails closed. This is not production authentication or tenant authorization.
 
 - [Proposed architecture](docs/architecture.md)
 - [Proposed repository structure](docs/repository-structure.md)
@@ -100,7 +100,7 @@ The JSON API is intentionally small:
 - `POST /api/alerts/{alert_id}/triage`
 - `GET /api/executions/{execution_id}` plus `/tools` and `/audit`
 
-The read-only UI is available at `/`, `/alerts/{alert_id}`, and `/executions/{execution_id}`. It has no mutation, approval, rejection, or execution controls.
+Review pages are available at `/`, `/alerts/{alert_id}`, `/executions/{execution_id}`, and `/actions/{action_id}`. Only the action page has state-changing forms, and those forms require a reviewer-authorized principal plus a session-bound CSRF token.
 
 With the server running, ingest a bundled synthetic alert and run triage:
 
@@ -119,9 +119,24 @@ curl -X POST -H 'Content-Type: application/json' \
   http://127.0.0.1:8000/api/alerts/alert-riley-risk/triage
 ```
 
-Open the returned execution URL in the UI. Alert/evidence text is untrusted and autoescaped. Errors use sanitized `{code, message}` objects. There is no cookie session or browser-triggered mutation in Milestone 8, so CSRF tokens are not applicable to the read-only UI; state-changing JSON API calls remain POST-only and no CORS policy is enabled.
+Open the returned execution URL and follow its action link. Alert, evidence, rationale, reviewer reason, and audit text are untrusted and autoescaped. Errors use sanitized `{code, message}` objects.
 
-The demo reasoner has no model, prompt, network, or OpenAI dependency. It requests only the allowlisted synthetic user-risk tool, always escalates for review, and may propose a cataloged approval-gated action for high-severity demo alerts. Such actions are display-only, require human approval, and are marked `NOT_IMPLEMENTED`.
+The demo reasoner has no model, prompt, network, or OpenAI dependency. It requests only the allowlisted synthetic user-risk tool, always escalates for review, and may propose a cataloged approval-gated action for high-severity demo alerts.
+
+The authority chain is deliberately explicit:
+
+> Reasoner recommends. Policy permits and classifies. Human reviewer authorizes the exact action. Executor revalidates. Simulation executes. Audit records the result.
+
+The fixed development reviewer is synthetic and is not production authentication. Approvals bind the action ID and digest, target/parameters, policy version, reviewer, decision time, and a server-selected 15-minute expiry. Rejected decisions have no expiry. Execution reloads all authoritative state, rejects stale or expired approval, and is idempotent after success.
+
+Action API routes are narrowly scoped:
+
+- `GET /api/actions/{action_id}`
+- `POST /api/actions/{action_id}/approve`
+- `POST /api/actions/{action_id}/reject`
+- `POST /api/actions/{action_id}/execute`
+
+JSON APIs use the configured principal and do not use browser cookies. Browser forms use an unpredictable session cookie plus an HMAC-bound CSRF token; missing or invalid tokens fail. Every executor result is labeled `SIMULATED` / `SIMULATED_SUCCESS`, and no adapter can contact a provider or perform remediation.
 
 ## Contributing
 

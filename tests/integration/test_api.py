@@ -111,6 +111,13 @@ def test_ingest_triage_and_read_views_are_durable(tmp_path: Path, fixture_root: 
         assert duplicate.status_code == 200
         assert duplicate.json()["created"] is False
 
+        prompt_injection = client.post(
+            f"/api/alerts/{alert['alert_id']}/triage",
+            headers={"Idempotency-Key": "triage-prompt-injection"},
+            json={"prompt_version": "openai-l1-v2"},
+        )
+        assert prompt_injection.status_code == 422
+
         triage = client.post(
             f"/api/alerts/{alert['alert_id']}/triage",
             headers={"Idempotency-Key": "triage-1"},

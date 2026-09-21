@@ -120,6 +120,12 @@ def test_initial_catalog_is_exact_immutable_and_high_impact(catalog: ActionCatal
         assert definition.risk is ActionRisk.HIGH_IMPACT
         assert definition.approval_required is True
         assert definition.execution_support is ExecutionSupport.SIMULATED_ONLY
+        assert definition.objective
+        assert definition.category
+        assert definition.evidence_considerations
+        assert definition.blast_radius
+        assert definition.reversibility
+        assert definition.excessive_when
         with pytest.raises(FrozenInstanceError):
             definition.approval_required = False  # type: ignore[misc]
 

@@ -183,6 +183,7 @@ def orchestrator(
         identifiers=SequenceIdentifierGenerator(),
         orchestration_limits=orchestration_limits or OrchestrationLimits(),
         gateway_limits=gateway_limits or GatewayLimits(total_calls=8, per_tool_calls=2),
+        reasoner_guidance_enabled=True,
     )
     return service, factory, fake, alert(include_riley=include_riley)
 
@@ -364,6 +365,15 @@ def test_happy_path_is_durable_and_reconstructable(
     assert outcome.result is not None
     assert outcome.result.actions_requiring_approval
     assert len(fake.contexts[1].evidence) == 1
+    assert {
+        (target.entity_type.value, target.identifier)
+        for target in fake.contexts[0].authorized_tool_targets
+    } == {
+        ("USER", "user-alex"),
+        ("DEVICE", "device-laptop-01"),
+        ("IP_ADDRESS", "198.51.100.25"),
+    }
+    assert fake.contexts[1].authorized_tool_targets == fake.contexts[0].authorized_tool_targets
     with SqlAlchemyUnitOfWork(factory) as uow:
         execution = uow.executions.get("execution-orchestration")
         assert execution is not None and execution.state is TriageExecutionState.COMPLETED
@@ -402,6 +412,23 @@ def test_reasoner_and_tool_failures_become_durable_review(
     assert outcome.reason_code is reason
     assert outcome.result is not None
     assert outcome.result.disposition is Disposition.NEEDS_REVIEW
+
+
+def test_mentioned_entity_does_not_expand_authorized_targets(
+    tmp_path: Path, fixture_dataset: FixtureDataset
+) -> None:
+    request = ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-riley"})
+    service, _, fake, source = orchestrator(tmp_path, fixture_dataset, [request])
+    source = source.model_copy(
+        update={"description": "The narrative mentions user-riley as untrusted data."}
+    )
+
+    outcome = run(service, source)
+
+    assert outcome.reason_code is OrchestrationReasonCode.TOOL_REQUEST_DENIED
+    assert all(
+        target.identifier != "user-riley" for target in fake.contexts[0].authorized_tool_targets
+    )
 
 
 def test_duplicate_request_terminates_without_loop(

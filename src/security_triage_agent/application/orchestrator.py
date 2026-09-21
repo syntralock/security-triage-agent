@@ -10,9 +10,11 @@ from pydantic import TypeAdapter, ValidationError
 
 from security_triage_agent.application.orchestration_contracts import (
     AccumulatedEvidence,
+    AuthorizedToolTarget,
     OrchestrationLimits,
     OrchestrationOutcome,
     OrchestrationReasonCode,
+    ReasonerActionSemantics,
     ReasonerCandidate,
     ReasonerContext,
     ReasonerStep,
@@ -72,6 +74,8 @@ class TriageOrchestrator:
         identifiers: IdentifierGenerator,
         orchestration_limits: OrchestrationLimits,
         gateway_limits: GatewayLimits,
+        action_semantics: tuple[ReasonerActionSemantics, ...] = (),
+        reasoner_guidance_enabled: bool = False,
     ) -> None:
         self._reasoner = reasoner
         self._gateway = gateway
@@ -81,6 +85,8 @@ class TriageOrchestrator:
         self._ids = identifiers
         self._limits = orchestration_limits
         self._gateway_limits = gateway_limits
+        self._action_semantics = action_semantics
+        self._reasoner_guidance_enabled = reasoner_guidance_enabled
         self._step_adapter: TypeAdapter[ReasonerStep] = TypeAdapter(ReasonerStep)
         self._logger = logging.getLogger(__name__)
 
@@ -120,6 +126,17 @@ class TriageOrchestrator:
                 correlation_id=correlation_id,
                 alert=alert,
                 evidence=tuple(accumulated),
+                authorized_tool_targets=(
+                    tuple(
+                        AuthorizedToolTarget.from_scope_key(key)
+                        for key in sorted(gateway_context.entity_scope.keys)
+                    )
+                    if self._reasoner_guidance_enabled
+                    else ()
+                ),
+                action_semantics=(
+                    self._action_semantics if self._reasoner_guidance_enabled else ()
+                ),
                 iteration=iteration,
                 remaining_iterations=self._limits.max_iterations - iteration,
                 remaining_total_tool_calls=max(

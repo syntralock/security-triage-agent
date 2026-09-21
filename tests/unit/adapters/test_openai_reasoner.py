@@ -15,8 +15,12 @@ from pydantic import ValidationError
 import security_triage_agent.adapters.reasoners.openai as openai_adapter
 from security_triage_agent.adapters.reasoners.openai import (
     INSTRUCTIONS,
+    PROMPT_DEFINITIONS,
     PROMPT_SHA256,
     PROMPT_VERSION,
+    V2_INSTRUCTIONS,
+    V2_PROMPT_SHA256,
+    V2_PROMPT_VERSION,
     OpenAIReasoner,
     OpenAIReasonerError,
     OpenAIReasonerOutput,
@@ -24,6 +28,8 @@ from security_triage_agent.adapters.reasoners.openai import (
 )
 from security_triage_agent.application.orchestration_contracts import (
     AccumulatedEvidence,
+    AuthorizedToolTarget,
+    ReasonerActionSemantics,
     ReasonerCandidate,
     ReasonerContext,
     ReasonerToolCall,
@@ -49,15 +55,32 @@ class FakeResponses:
 
 
 def test_versioned_prompt_digest_is_frozen() -> None:
+    frozen_v1_digest = "".join(
+        (
+            "5fcf6c67",
+            "bf2c7cb5",
+            "f5ba1d45",
+            "d0080812",
+            "8f8a4237",
+            "b7134ad3",
+            "66468e94",
+            "72b04b32",
+        )
+    )
+    assert frozen_v1_digest == PROMPT_SHA256
     assert hashlib.sha256(INSTRUCTIONS.encode()).hexdigest() == PROMPT_SHA256
+    assert hashlib.sha256(V2_INSTRUCTIONS.encode()).hexdigest() == V2_PROMPT_SHA256
+    assert V2_PROMPT_SHA256 != PROMPT_SHA256
+    assert set(PROMPT_DEFINITIONS) == {PROMPT_VERSION, V2_PROMPT_VERSION}
 
 
-def reasoner(responses: FakeResponses) -> OpenAIReasoner:
+def reasoner(responses: FakeResponses, *, prompt_version: str = PROMPT_VERSION) -> OpenAIReasoner:
     return OpenAIReasoner(
         api_key="test-only-not-a-secret",  # pragma: allowlist secret
         model="test-model",
         timeout_seconds=2,
         max_output_tokens=256,
+        prompt_version=prompt_version,
         client=SimpleNamespace(responses=responses),
     )
 
@@ -404,6 +427,119 @@ def test_prompt_injection_is_serialized_as_inert_data(fixture_dataset: Any) -> N
     assert "approval" in INSTRUCTIONS
     assert "chain-of-thought" in INSTRUCTIONS
     assert PROMPT_VERSION == "openai-l1-v1"
+
+
+def test_v1_serialization_shape_remains_frozen(fixture_dataset: Any) -> None:
+    supplied = context(fixture_dataset.alerts[0]).model_copy(
+        update={
+            "authorized_tool_targets": (
+                AuthorizedToolTarget(entity_type="USER", identifier="user-alex"),
+            ),
+            "action_semantics": (
+                ReasonerActionSemantics(
+                    catalog_action_id="disable_account",
+                    target_types=("USER",),
+                    objective="Contain compromise.",
+                    category="CONTAINMENT",
+                    evidence_considerations="Established compromise.",
+                    blast_radius="Broad disruption.",
+                    reversibility="Reversible by an administrator.",
+                    excessive_when="Compromise is uncorroborated.",
+                ),
+            ),
+        }
+    )
+    adapter = reasoner(FakeResponses(), prompt_version=PROMPT_VERSION)
+
+    serialized = json.loads(adapter._serialize_context(supplied))
+
+    assert set(serialized) == {"boundary", "alert", "evidence", "bounds"}
+    assert "original_payload" in serialized["alert"]
+
+
+def test_v2_contract_and_model_presentation_are_explicit_and_neutralized(
+    fixture_dataset: Any,
+) -> None:
+    alert = fixture_dataset.alerts[0].model_copy(
+        update={
+            "title": "Synthetic demo test evaluation fixture alert",
+            "description": (
+                "Expected demonstration baseline from a documentation address on "
+                "host.example.test running SyntheticOS. HIGH risk and MFA DENIED."
+            ),
+        }
+    )
+    supplied = context(alert).model_copy(
+        update={
+            "authorized_tool_targets": (
+                AuthorizedToolTarget(entity_type="USER", identifier="user-alex"),
+            ),
+            "action_semantics": (
+                ReasonerActionSemantics(
+                    catalog_action_id="revoke_sessions",
+                    target_types=("USER",),
+                    objective="Terminate suspect session access.",
+                    category="CONTAINMENT",
+                    evidence_considerations="A suspect active session may exist.",
+                    blast_radius="Forces reauthentication.",
+                    reversibility="Access resumes after authentication.",
+                    excessive_when="No session concern is supported.",
+                    reasonable_combinations=("reset_password",),
+                ),
+            ),
+        }
+    )
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
+            }
+        }
+    )
+
+    reasoner(responses, prompt_version=V2_PROMPT_VERSION).next_step(supplied)
+
+    request = responses.calls[0]
+    assert request["instructions"] == V2_INSTRUCTIONS
+    sent = json.loads(str(request["input"]))
+    assert sent["authorized_tool_targets"] == [{"entity_type": "USER", "identifier": "user-alex"}]
+    assert sent["action_semantics"][0]["catalog_action_id"] == "revoke_sessions"
+    assert "original_payload" not in sent["alert"]
+    assert "provider_schema_version" not in sent["alert"]
+    serialized = json.dumps(sent).lower()
+    for artificial_cue in (
+        "synthetic",
+        "demo",
+        "test",
+        "evaluation",
+        "fixture",
+        "expected demonstration baseline",
+        "documentation address",
+        ".example.test",
+    ):
+        assert artificial_cue not in serialized
+    assert "high risk" in serialized
+    assert "mfa denied" in serialized
+    assert alert.title == "Synthetic demo test evaluation fixture alert"
+
+
+def test_v2_prompt_encodes_approved_reasoning_contract() -> None:
+    normalized = " ".join(V2_INSTRUCTIONS.split())
+    required_concepts = (
+        "hypothesis-first",
+        "highest-information-value",
+        "materially independent corroboration",
+        "NOT_FOUND",
+        "Assess severity independently",
+        "smallest response",
+        "Escalation is independent",
+        "Confidence is advisory",
+        "authorized_tool_targets",
+        "Artificial-environment cues",
+    )
+    assert all(concept in normalized for concept in required_concepts)
 
 
 def test_schema_exposes_only_seven_evidence_tool_identities() -> None:

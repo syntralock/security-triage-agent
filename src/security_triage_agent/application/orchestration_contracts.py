@@ -9,6 +9,7 @@ from pydantic import Field
 from security_triage_agent.application.policy import CandidateAssessment, PolicyDecision
 from security_triage_agent.domain._base import DomainModel, Identifier
 from security_triage_agent.domain.alerts import SecurityAlert
+from security_triage_agent.domain.entities import EntityType
 from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
 from security_triage_agent.domain.triage import TriageResult
 
@@ -36,11 +37,39 @@ class AccumulatedEvidence(DomainModel):
     outcome: dict[str, object]
 
 
+class AuthorizedToolTarget(DomainModel):
+    """Model-visible copy of application-authoritative tool target scope."""
+
+    entity_type: EntityType
+    identifier: Identifier
+
+    @classmethod
+    def from_scope_key(cls, key: str) -> "AuthorizedToolTarget":
+        entity_type, identifier = key.split(":", maxsplit=1)
+        return cls(entity_type=EntityType(entity_type), identifier=identifier)
+
+
+class ReasonerActionSemantics(DomainModel):
+    """Trusted advisory description; deterministic catalog fields remain authoritative."""
+
+    catalog_action_id: Identifier
+    target_types: tuple[EntityType, ...]
+    objective: str
+    category: str
+    evidence_considerations: str
+    blast_radius: str
+    reversibility: str
+    excessive_when: str
+    reasonable_combinations: tuple[Identifier, ...] = ()
+
+
 class ReasonerContext(DomainModel):
     execution_id: Identifier
     correlation_id: Identifier
     alert: SecurityAlert
     evidence: tuple[AccumulatedEvidence, ...]
+    authorized_tool_targets: tuple[AuthorizedToolTarget, ...] = ()
+    action_semantics: tuple[ReasonerActionSemantics, ...] = ()
     iteration: int = Field(ge=1)
     remaining_iterations: int = Field(ge=0)
     remaining_total_tool_calls: int = Field(ge=0)

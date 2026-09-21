@@ -152,6 +152,14 @@ STA_OPENAI_MAX_OUTPUT_TOKENS=1500
 STA_OPENAI_PROMPT_VERSION=openai-l1-v1
 ```
 
+The default `openai-l1-v1` contract remains frozen for baseline reproducibility. Trusted local
+configuration may instead select the experimental `openai-l1-v2` contract. Request data cannot
+select a prompt. V2 adds explicit evidence, disposition, severity, escalation, confidence, and
+minimal-action semantics; an alert-derived tool-target scope; and catalog-derived action guidance.
+It also removes artificial benchmark cues from the provider-facing presentation without changing
+the stored synthetic alert or evidence. V2 has not yet been live-benchmarked, and selecting it does
+not alter gateway, policy, approval, or execution authority.
+
 The default provider is `demo`. Enabling `openai` without a key fails closed; there is no silent fallback. SDK retries are disabled, requests set `store=False`, output is bounded, and provider errors become sanitized reasoner failures that orchestration durably resolves to `NEEDS_REVIEW` when possible.
 
 An optional live synthetic evaluation is developer-invoked only and never part of CI:

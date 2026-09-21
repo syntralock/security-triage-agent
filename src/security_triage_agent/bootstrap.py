@@ -30,7 +30,10 @@ from security_triage_agent.adapters.tools.fixture_models import load_fixture_dat
 from security_triage_agent.application.action_catalog import initial_action_catalog
 from security_triage_agent.application.alert_service import AlertIngestionService
 from security_triage_agent.application.approval_service import ApprovalService
-from security_triage_agent.application.orchestration_contracts import OrchestrationLimits
+from security_triage_agent.application.orchestration_contracts import (
+    OrchestrationLimits,
+    ReasonerActionSemantics,
+)
 from security_triage_agent.application.orchestrator import TriageOrchestrator
 from security_triage_agent.application.policy import POLICY_VERSION, DeterministicPolicy
 from security_triage_agent.application.ports.auth import AuthorizationService
@@ -80,6 +83,21 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         identifiers=identifiers,
         orchestration_limits=OrchestrationLimits(),
         gateway_limits=gateway_limits,
+        action_semantics=tuple(
+            ReasonerActionSemantics(
+                catalog_action_id=definition.action_id,
+                target_types=tuple(sorted(definition.target_types, key=lambda item: item.value)),
+                objective=definition.objective,
+                category=definition.category,
+                evidence_considerations=definition.evidence_considerations,
+                blast_radius=definition.blast_radius,
+                reversibility=definition.reversibility,
+                excessive_when=definition.excessive_when,
+                reasonable_combinations=definition.reasonable_combinations,
+            )
+            for definition in catalog.values()
+        ),
+        reasoner_guidance_enabled=settings.openai_prompt_version == "openai-l1-v2",
     )
     authorization = AuthorizationService()
     approval_service = ApprovalService(

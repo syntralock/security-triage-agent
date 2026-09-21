@@ -74,6 +74,11 @@ Baseline result on 2026-09-18: 10 scenarios, 6 exact dispositions, 3 explicitly 
 
 The small, overlapping synthetic suite is a harness baseline, not evidence of general SOC accuracy. The OpenAI adapter implements the existing `AgentReasoner` port and runs through this same harness without gaining access to ground truth or security authority.
 
+`openai-l1-v2` is implemented as an offline-reviewed experimental reasoning contract but has no
+live benchmark in this milestone. No v2 score should be inferred from unit, integration, mocked,
+or deterministic evaluation results. Any future comparison must freeze model, suite, fixtures,
+policy, scoring, and run protocol before making provider requests.
+
 The optional OpenAI run uses the same command after trusted environment configuration selects `openai`. It never runs automatically, never receives scenario ground truth, never creates approvals, and never executes actions. Provider failures remain visible as safe review outcomes rather than triggering a hidden demo-reasoner fallback.
 
 **Model-reported confidence is not a calibrated probability.** It is not rewarded by scoring and cannot authorize an action.

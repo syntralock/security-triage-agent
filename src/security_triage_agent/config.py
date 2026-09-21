@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     openai_model: str = Field(default="gpt-5.6-luna", min_length=1, max_length=128)
     openai_request_timeout_seconds: float = Field(default=25.0, ge=1.0, le=25.0)
     openai_max_output_tokens: int = Field(default=1_500, ge=128, le=8_192)
-    openai_prompt_version: Literal["openai-l1-v1"] = "openai-l1-v1"
+    openai_prompt_version: Literal["openai-l1-v1", "openai-l1-v2"] = "openai-l1-v1"
 
     def validate_runtime_profile(self) -> None:
         """Refuse deployment profiles whose required security controls do not exist."""

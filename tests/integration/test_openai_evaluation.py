@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 from alembic import command
 from alembic.config import Config
@@ -15,7 +15,7 @@ from security_triage_agent.adapters.persistence.models import (
     ApprovalDecisionRow,
 )
 from security_triage_agent.adapters.persistence.uow import create_engine
-from security_triage_agent.adapters.reasoners.openai import OpenAIReasoner
+from security_triage_agent.adapters.reasoners.openai import V2_PROMPT_VERSION, OpenAIReasoner
 from security_triage_agent.config import Environment, ReasonerProvider, Settings
 from security_triage_agent.domain.states import TriageExecutionState
 
@@ -70,8 +70,13 @@ class ScenarioResponses:
         )
 
 
-def configured_settings(tmp_path: Path, fixture_root: Path) -> Settings:
-    database = tmp_path / "openai-evaluation.db"
+def configured_settings(
+    tmp_path: Path,
+    fixture_root: Path,
+    *,
+    prompt_version: Literal["openai-l1-v1", "openai-l1-v2"] = "openai-l1-v1",
+) -> Settings:
+    database = tmp_path / f"openai-evaluation-{prompt_version}.db"
     config = Config("alembic.ini")
     config.attributes["database_url"] = f"sqlite:///{database}"
     command.upgrade(config, "head")
@@ -84,6 +89,7 @@ def configured_settings(tmp_path: Path, fixture_root: Path) -> Settings:
         reasoner_provider=ReasonerProvider.OPENAI,
         openai_api_key="synthetic-test-key",  # pragma: allowlist secret
         openai_model="mocked-model",
+        openai_prompt_version=prompt_version,
     )
 
 
@@ -180,3 +186,42 @@ def test_provider_failure_is_measured_as_safe_review(
     assert score.actual_disposition.value == "NEEDS_REVIEW"
     assert score.total_tool_calls == 0
     assert report.provider == "openai"
+
+
+def test_v2_runs_through_production_wiring_with_scope_and_action_semantics(
+    tmp_path: Path, fixture_root: Path, monkeypatch: Any
+) -> None:
+    provider = ScenarioResponses()
+
+    def build_mocked(
+        *,
+        api_key: str,
+        model: str,
+        timeout_seconds: float,
+        max_output_tokens: int,
+        prompt_version: str,
+    ) -> OpenAIReasoner:
+        return OpenAIReasoner(
+            api_key=api_key,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            max_output_tokens=max_output_tokens,
+            prompt_version=prompt_version,
+            client=SimpleNamespace(responses=provider),
+        )
+
+    monkeypatch.setattr(bootstrap, "OpenAIReasoner", build_mocked)
+    settings = configured_settings(tmp_path, fixture_root, prompt_version="openai-l1-v2")
+
+    report = bootstrap.build_evaluation_runner(settings).run("typed-not-found-evidence")
+
+    assert report.prompt_version == V2_PROMPT_VERSION
+    assert report.aggregate.scenario_count == 1
+    assert provider.inputs
+    for serialized in provider.inputs:
+        supplied = json.loads(serialized)
+        assert supplied["authorized_tool_targets"]
+        assert len(supplied["action_semantics"]) == 6
+        assert all(item["target_types"] for item in supplied["action_semantics"])
+        assert "ground_truth" not in serialized
+        assert "original_payload" not in supplied["alert"]

@@ -58,6 +58,15 @@ def test_openai_configuration_is_trusted_and_secret_is_excluded(
     assert "synthetic-test-key" not in settings.model_dump_json()
 
 
+def test_openai_prompt_version_selection_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STA_OPENAI_PROMPT_VERSION", "openai-l1-v2")
+    assert Settings(_env_file=None).openai_prompt_version == "openai-l1-v2"
+
+    monkeypatch.setenv("STA_OPENAI_PROMPT_VERSION", "unreviewed-v3")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [("STA_ENVIRONMENT", "staging"), ("STA_LOG_LEVEL", "TRACE"), ("STA_LOG_FORMAT", "xml")],

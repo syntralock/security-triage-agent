@@ -31,6 +31,7 @@ from security_triage_agent.application.ports.auth import (
 )
 from security_triage_agent.application.ports.reasoner import Clock, IdentifierGenerator
 from security_triage_agent.application.ports.repositories import UnitOfWork
+from security_triage_agent.application.recovery_service import StaleStateRecoveryService
 from security_triage_agent.domain.alerts import SecurityAlert
 
 
@@ -65,6 +66,7 @@ class AppDependencies:
     identifiers: IdentifierGenerator
     action_catalog: ActionCatalog
     approval_service: ApprovalService
+    recovery_service: StaleStateRecoveryService
     clock: Clock
     max_request_bytes: int = 65_536
 

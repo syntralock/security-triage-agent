@@ -7,9 +7,11 @@ services:
       STA_LOG_FORMAT: json
       STA_LOG_LEVEL: INFO
     read_only: true
+    init: true
+    pids_limit: 100
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     tmpfs:
-      - /tmp:size=16m,mode=1777
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev

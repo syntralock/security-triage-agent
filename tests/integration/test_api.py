@@ -267,7 +267,7 @@ def test_production_cannot_use_development_identity(fixture_root: Path) -> None:
     try:
         build_dependencies(settings)
     except RuntimeError as error:
-        assert str(error) == "development principal cannot be used in production"
+        assert "production identity provider" in str(error)
     else:
         raise AssertionError("production composition must fail closed")
 

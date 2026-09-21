@@ -1,8 +1,7 @@
 """Human- and machine-readable deterministic evaluation reports."""
 
-import json
-
 from security_triage_agent.evaluation.runner import EvaluationReport
+from security_triage_agent.serialization import safe_json_dumps
 
 
 def render_text(report: EvaluationReport) -> str:
@@ -26,7 +25,7 @@ def render_text(report: EvaluationReport) -> str:
             f"required omitted: {aggregate.required_tool_omissions}; "
             f"forbidden: {aggregate.forbidden_tool_calls}"
         ),
-        "Confusion matrix: " + json.dumps(aggregate.confusion_matrix, sort_keys=True),
+        "Confusion matrix: " + safe_json_dumps(aggregate.confusion_matrix),
         "Cases:",
     ]
     for case in report.cases:
@@ -41,4 +40,4 @@ def render_text(report: EvaluationReport) -> str:
 
 
 def render_json(report: EvaluationReport) -> str:
-    return report.model_dump_json(indent=2)
+    return safe_json_dumps(report, indent=2)

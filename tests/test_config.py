@@ -14,6 +14,15 @@ def test_settings_have_safe_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.log_format == "json"
     assert settings.openai_request_timeout_seconds == 25.0
+    assert settings.stale_execution_seconds == 900
+    assert settings.stale_action_execution_seconds == 300
+
+
+def test_production_runtime_profile_fails_closed() -> None:
+    settings = Settings(environment=Environment.PRODUCTION, _env_file=None)
+
+    with pytest.raises(RuntimeError, match="production identity provider"):
+        settings.validate_runtime_profile()
 
 
 def test_openai_timeout_has_a_hard_upper_bound(monkeypatch: pytest.MonkeyPatch) -> None:

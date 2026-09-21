@@ -37,6 +37,8 @@ class AccumulatedEvidence(DomainModel):
 
 
 class ReasonerContext(DomainModel):
+    execution_id: Identifier
+    correlation_id: Identifier
     alert: SecurityAlert
     evidence: tuple[AccumulatedEvidence, ...]
     iteration: int = Field(ge=1)

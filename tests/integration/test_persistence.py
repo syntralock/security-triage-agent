@@ -19,7 +19,10 @@ from security_triage_agent.adapters.persistence.uow import (
     create_engine,
 )
 from security_triage_agent.application.action_catalog import initial_action_catalog
-from security_triage_agent.application.orchestration_contracts import SequenceIdentifierGenerator
+from security_triage_agent.application.orchestration_contracts import (
+    FixedClock,
+    SequenceIdentifierGenerator,
+)
 from security_triage_agent.application.persistence import (
     ActionExecutionRecord,
     AuditEvent,
@@ -30,6 +33,11 @@ from security_triage_agent.application.policy import (
     AuthorizedActionScope,
     CandidateAssessment,
     DeterministicPolicy,
+)
+from security_triage_agent.application.recovery_service import (
+    STALE_EXECUTION,
+    STALE_SIMULATED_ACTION,
+    StaleStateRecoveryService,
 )
 from security_triage_agent.application.tool_gateway import ToolInvocationRecord
 from security_triage_agent.domain.actions import (
@@ -334,6 +342,131 @@ def test_tool_and_action_execution_round_trip(uow_factory: sessionmaker[Session]
         assert reloaded.tool_invocations.list_for_execution("execution-001") == (invocation,)
         assert reloaded.action_executions.get("action-execution-001") == action_execution
         assert reloaded.executions.get("execution-001") == execution()
+
+
+def test_stale_execution_recovery_is_atomic_selective_and_idempotent(
+    uow_factory: sessionmaker[Session],
+) -> None:
+    old = NOW - timedelta(hours=2)
+    recent = NOW - timedelta(minutes=2)
+    source = alert()
+    stale = execution().model_copy(
+        update={
+            "execution_id": "execution-stale",
+            "state": TriageExecutionState.RUNNING,
+            "idempotency_key": "idempotency-stale",
+            "created_at": old,
+            "updated_at": old,
+        }
+    )
+    active = execution().model_copy(
+        update={
+            "execution_id": "execution-active",
+            "state": TriageExecutionState.RUNNING,
+            "idempotency_key": "idempotency-active",
+            "created_at": recent,
+            "updated_at": recent,
+        }
+    )
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        uow.alerts.add(source)
+        uow.flush()
+        uow.executions.add(stale)
+        uow.executions.add(active)
+        uow.commit()
+
+    service = StaleStateRecoveryService(
+        uow_factory=lambda: SqlAlchemyUnitOfWork(uow_factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        execution_threshold=timedelta(minutes=15),
+        action_threshold=timedelta(minutes=15),
+    )
+    assert (
+        service.recover_stale_executions(
+            operator_id="operator", correlation_id="recovery-correlation"
+        )
+        == 1
+    )
+    assert (
+        service.recover_stale_executions(
+            operator_id="operator", correlation_id="recovery-correlation-2"
+        )
+        == 0
+    )
+
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        recovered = uow.executions.get("execution-stale")
+        untouched = uow.executions.get("execution-active")
+        assert recovered is not None and recovered.state is TriageExecutionState.FAILED
+        assert recovered.failure_category == STALE_EXECUTION
+        assert untouched is not None and untouched.state is TriageExecutionState.RUNNING
+        events = uow.audit.list_for_target("triage_execution", "execution-stale")
+        assert len(events) == 1
+        assert events[0].event_type == "triage.stale_execution_recovered"
+        assert events[0].failure_category == STALE_EXECUTION
+
+
+def test_stale_simulated_action_recovery_never_reruns_or_infers_success(
+    uow_factory: sessionmaker[Session],
+) -> None:
+    old = NOW - timedelta(hours=2)
+    recent = NOW - timedelta(minutes=2)
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        proposed = seed(uow)
+        uow.action_executions.add(
+            ActionExecutionRecord(
+                action_execution_id="action-execution-stale",
+                action_id=proposed.action_id,
+                state=ActionState.EXECUTING,
+                started_at=old,
+                mode="SIMULATED",
+            )
+        )
+        second = action().model_copy(update={"action_id": "action-recent"})
+        uow.actions.add("execution-001", second)
+        uow.flush()
+        uow.action_executions.add(
+            ActionExecutionRecord(
+                action_execution_id="action-execution-recent",
+                action_id=second.action_id,
+                state=ActionState.EXECUTING,
+                started_at=recent,
+                mode="SIMULATED",
+            )
+        )
+        uow.commit()
+
+    service = StaleStateRecoveryService(
+        uow_factory=lambda: SqlAlchemyUnitOfWork(uow_factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        execution_threshold=timedelta(minutes=15),
+        action_threshold=timedelta(minutes=15),
+    )
+    assert (
+        service.recover_stale_actions(operator_id="operator", correlation_id="recovery-correlation")
+        == 1
+    )
+    assert (
+        service.recover_stale_actions(
+            operator_id="operator", correlation_id="recovery-correlation-2"
+        )
+        == 0
+    )
+
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        recovered = uow.action_executions.get("action-execution-stale")
+        untouched = uow.action_executions.get("action-execution-recent")
+        approval = uow.approvals.get_for_action("action-001")
+        assert recovered is not None and recovered.state is ActionState.FAILED
+        assert recovered.outcome == "SIMULATED_RECOVERY_FAILURE"
+        assert recovered.failure_category == STALE_SIMULATED_ACTION
+        assert untouched is not None and untouched.state is ActionState.EXECUTING
+        assert approval is None
+        events = uow.audit.list_for_target("recommended_action", "action-001")
+        assert len(events) == 1
+        assert events[0].event_type == "action.stale_simulation_recovered"
 
 
 def test_state_and_audit_commit_atomically(uow_factory: sessionmaker[Session]) -> None:

@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–11 are complete; Milestone 12 still requires explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–11 are complete; M12A security and reliability hardening is in review. M12B agent-quality tuning and M12C public-release work have not started and require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -121,6 +121,8 @@ Add the OpenAI SDK adapter behind `AgentReasoner`, strict structured output/tool
 **Acceptance:** removing or disabling the adapter leaves all offline functionality/tests intact; provider failure leads to the documented safe state; SDK types do not leak into domain/application code.
 
 ## Milestone 12 — Hardening and portfolio release
+
+**M12A status:** implemented for review on 2026-09-21. Scope is security and reliability hardening only: explicit stale-state recovery, fail-closed production validation, provider correlation, immutable-value report serialization, prompt-version integrity, container limits, security/secret documentation, and frozen M11 baseline evidence. M12B and M12C remain unstarted.
 
 Complete threat model, abuse cases, dependency/container hardening, rate/input limits, audit-integrity decision, observability, retention/redaction documentation, PostgreSQL compatibility test, accessibility pass, and demonstration walkthrough.
 

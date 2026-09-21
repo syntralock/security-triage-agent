@@ -215,6 +215,12 @@ Alembic revision `0001_initial_persistence` is the sole production schema-creati
 
 Append-only here is an application interface property, not cryptographic immutability. A database administrator or compromised process can modify SQLite directly. Hash chaining, signed export, immutable external storage, and an outbox remain compatible future hardening options and are intentionally not implemented now.
 
+M12A adds an explicit operator recovery use case (`--recover-stale`). Using a trusted UTC clock and configured thresholds, it selects only stale `RUNNING` triage executions and stale `EXECUTING` simulated-action attempts. Each is transitioned to `FAILED` with a stable category and an audit event in one Unit of Work. It never infers success, invokes a reasoner, reruns a tool/action, or operates from a read path; repeated invocation is idempotent. Recovery is operator-invoked rather than automatic at startup so its scope and audit actor remain visible.
+
+Production mode currently refuses startup because a production identity provider and tenant boundary do not exist. Local secrets enter only through typed configuration; a future Azure deployment should inject `OPENAI_API_KEY` from Key Vault using workload Managed Identity without coupling domain/application code to Azure SDKs. See [secret management](secret-management.md).
+
+Provider success/failure telemetry contains provider, configured model, prompt version, duration, execution ID, correlation ID, sanitized failure category, and token counts when the SDK returns them. Missing usage remains missing rather than zero. Durable token accounting is deferred until a typed provider-observation port can preserve it without mixing infrastructure metadata into reasoner output.
+
 ## 3. Triage result contract
 
 The API result is a strict Pydantic model containing:

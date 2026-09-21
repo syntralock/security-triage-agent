@@ -1,5 +1,6 @@
 """OpenAI adapter boundary tests with no network or API spend."""
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -11,8 +12,10 @@ import openai
 import pytest
 from pydantic import ValidationError
 
+import security_triage_agent.adapters.reasoners.openai as openai_adapter
 from security_triage_agent.adapters.reasoners.openai import (
     INSTRUCTIONS,
+    PROMPT_SHA256,
     PROMPT_VERSION,
     OpenAIReasoner,
     OpenAIReasonerError,
@@ -45,6 +48,10 @@ class FakeResponses:
         )
 
 
+def test_versioned_prompt_digest_is_frozen() -> None:
+    assert hashlib.sha256(INSTRUCTIONS.encode()).hexdigest() == PROMPT_SHA256
+
+
 def reasoner(responses: FakeResponses) -> OpenAIReasoner:
     return OpenAIReasoner(
         api_key="test-only-not-a-secret",  # pragma: allowlist secret
@@ -57,6 +64,8 @@ def reasoner(responses: FakeResponses) -> OpenAIReasoner:
 
 def context(alert: Any) -> ReasonerContext:
     return ReasonerContext(
+        execution_id="execution-test",
+        correlation_id="correlation-test",
         alert=alert,
         evidence=(),
         iteration=1,
@@ -88,6 +97,33 @@ def test_maps_strict_tool_proposal_without_executable_tools(fixture_dataset: Any
     assert request["model"] == "test-model"
     assert request["text_format"] is OpenAIReasonerOutput
     assert "ground_truth" not in str(request["input"])
+
+
+def test_success_observability_is_correlated_and_records_safe_usage(
+    fixture_dataset: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observed: dict[str, object] = {}
+    monkeypatch.setattr(
+        openai_adapter,
+        "log_event",
+        lambda _logger, _level, _event, **fields: observed.update(fields),
+    )
+    alert = fixture_dataset.alerts[0]
+    user_id = next(entity.identifier for entity in alert.entities if entity.entity_type == "USER")
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": user_id},
+            }
+        }
+    )
+    reasoner(responses).next_step(context(alert))
+    assert observed["execution_id"] == "execution-test"
+    assert observed["correlation_id"] == "correlation-test"
+    assert observed["input_tokens"] == 10
+    assert observed["output_tokens"] == 20
 
 
 def test_maps_candidate_and_preserves_model_confidence(fixture_dataset: Any) -> None:
@@ -135,6 +171,8 @@ def test_candidate_reference_ids_map_to_exact_context_objects(fixture_dataset: A
         summary="Synthetic tool call.",
     )
     supplied = ReasonerContext(
+        execution_id="execution-test",
+        correlation_id="correlation-test",
         alert=fixture_dataset.alerts[0],
         evidence=(
             AccumulatedEvidence(
@@ -233,12 +271,21 @@ def test_malformed_or_extra_authority_output_fails_safely(
     assert caught.value.category is ProviderFailureCategory.VALIDATION
 
 
-def test_timeout_is_sanitized(fixture_dataset: Any) -> None:
+def test_timeout_is_sanitized(fixture_dataset: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: dict[str, object] = {}
+    monkeypatch.setattr(
+        openai_adapter,
+        "log_event",
+        lambda _logger, _level, _event, **fields: observed.update(fields),
+    )
     error = openai.APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
     with pytest.raises(OpenAIReasonerError) as caught:
         reasoner(FakeResponses(error=error)).next_step(context(fixture_dataset.alerts[0]))
     assert str(caught.value) == "OpenAI reasoner failed: timeout"
     assert caught.value.category is ProviderFailureCategory.TIMEOUT
+    assert observed["execution_id"] == "execution-test"
+    assert observed["correlation_id"] == "correlation-test"
+    assert observed["failure_category"] == "timeout"
 
 
 @pytest.mark.parametrize(

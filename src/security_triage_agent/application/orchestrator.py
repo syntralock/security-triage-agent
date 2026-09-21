@@ -116,6 +116,8 @@ class TriageOrchestrator:
                 termination = OrchestrationReasonCode.DEADLINE_EXCEEDED
                 break
             context = ReasonerContext(
+                execution_id=execution_id,
+                correlation_id=correlation_id,
                 alert=alert,
                 evidence=tuple(accumulated),
                 iteration=iteration,

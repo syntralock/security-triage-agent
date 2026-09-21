@@ -25,6 +25,9 @@ The configured principal is the fixed synthetic `development-reviewer`. It is se
 - [Proposed architecture](docs/architecture.md)
 - [Proposed repository structure](docs/repository-structure.md)
 - [Threat model](docs/threat-model.md)
+- [M12A hardening review](docs/hardening-review.md)
+- [Security invariants](docs/security-invariants.md)
+- [Secret management](docs/secret-management.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Evaluation framework](docs/evaluation.md)
 - [Engineering and security rules](AGENTS.md)
@@ -53,10 +56,11 @@ python -m pip install --upgrade pip
 make install
 ```
 
-Local settings use `STA_`-prefixed environment variables. Defaults are safe for development; copy `.env.example` only when overrides are needed:
+Local settings use `STA_`-prefixed environment variables. Defaults are safe for development; copy `.env.example` to the explicitly ignored `.env.local` only when overrides are needed, and restrict it to the local user (`chmod 600 .env.local`):
 
 ```bash
-cp .env.example .env
+cp .env.example .env.local
+chmod 600 .env.local
 ```
 
 Run the foundation startup/configuration check:
@@ -143,7 +147,7 @@ Configuration is trusted and environment-only:
 STA_REASONER_PROVIDER=openai
 OPENAI_API_KEY=<local secret>
 STA_OPENAI_MODEL=gpt-5.6-luna
-STA_OPENAI_REQUEST_TIMEOUT_SECONDS=4
+STA_OPENAI_REQUEST_TIMEOUT_SECONDS=25
 STA_OPENAI_MAX_OUTPUT_TOKENS=1500
 STA_OPENAI_PROMPT_VERSION=openai-l1-v1
 ```
@@ -161,6 +165,14 @@ It records provider, model, prompt version, suite, fixture, and policy identity.
 The authority chain is deliberately explicit:
 
 > Reasoner recommends. Policy permits and classifies. Human reviewer authorizes the exact action. Executor revalidates. Simulation executes. Audit records the result.
+
+If a process is interrupted, an operator may explicitly fail stale non-terminal records after applying migrations:
+
+```bash
+python -m security_triage_agent --recover-stale
+```
+
+The configured thresholds are hard lower-bounded and the recovery is idempotent. It never infers success or reruns an action. It is intentionally not hidden in a read path or automatic startup hook.
 
 The fixed development reviewer is synthetic and is not production authentication. Approvals bind the action ID and digest, target/parameters, policy version, reviewer, decision time, and a server-selected 15-minute expiry. Rejected decisions have no expiry. Execution reloads all authoritative state, rejects stale or expired approval, and is idempotent after success.
 
@@ -180,7 +192,7 @@ JSON APIs use the configured principal and do not use browser cookies. Browser f
 3. Add tests, including a negative/security case for behavior changes.
 4. Run `make check`; run `make container-smoke` when container or packaging behavior changes.
 5. Update documentation or add an ADR when changing a trust boundary or public contract.
-6. Never commit `.env`, credentials, real security data, generated databases, or tool output containing sensitive values.
+6. Never commit `.env`, `.env.local`, credentials, real security data, generated databases, or tool output containing sensitive values.
 
 Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 

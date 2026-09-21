@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     fixture_path: str = Field(default="fixtures/v1", min_length=1)
     max_request_bytes: int = Field(default=65_536, ge=1_024, le=1_000_000)
     approval_lifetime_seconds: int = Field(default=900, ge=60, le=86_400)
+    stale_execution_seconds: int = Field(default=900, ge=60, le=86_400)
+    stale_action_execution_seconds: int = Field(default=300, ge=60, le=86_400)
     evaluation_path: str = Field(default="evaluations/v1/manifest.json", min_length=1)
     reasoner_provider: ReasonerProvider = ReasonerProvider.DEMO
     openai_api_key: SecretStr | None = Field(
@@ -51,6 +53,14 @@ class Settings(BaseSettings):
     openai_request_timeout_seconds: float = Field(default=25.0, ge=1.0, le=25.0)
     openai_max_output_tokens: int = Field(default=1_500, ge=128, le=8_192)
     openai_prompt_version: Literal["openai-l1-v1"] = "openai-l1-v1"
+
+    def validate_runtime_profile(self) -> None:
+        """Refuse deployment profiles whose required security controls do not exist."""
+
+        if self.environment is Environment.PRODUCTION:
+            raise RuntimeError(
+                "production startup is disabled until a production identity provider is configured"
+            )
 
 
 @lru_cache(maxsize=1)

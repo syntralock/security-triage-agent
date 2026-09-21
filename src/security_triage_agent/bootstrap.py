@@ -34,9 +34,10 @@ from security_triage_agent.application.orchestration_contracts import Orchestrat
 from security_triage_agent.application.orchestrator import TriageOrchestrator
 from security_triage_agent.application.policy import POLICY_VERSION, DeterministicPolicy
 from security_triage_agent.application.ports.auth import AuthorizationService
+from security_triage_agent.application.recovery_service import StaleStateRecoveryService
 from security_triage_agent.application.tool_gateway import GatewayLimits, ToolGateway
 from security_triage_agent.application.tool_registry import ToolRegistry
-from security_triage_agent.config import Environment, ReasonerProvider, Settings, get_settings
+from security_triage_agent.config import ReasonerProvider, Settings, get_settings
 from security_triage_agent.evaluation.loader import load_suite
 from security_triage_agent.evaluation.runner import EvaluationRunner
 
@@ -44,8 +45,7 @@ from security_triage_agent.evaluation.runner import EvaluationRunner
 def build_dependencies(settings: Settings) -> AppDependencies:
     """Assemble only trusted, configuration-selected implementations."""
 
-    if settings.environment is Environment.PRODUCTION:
-        raise RuntimeError("development principal cannot be used in production")
+    settings.validate_runtime_profile()
     engine = create_engine(settings.database_url)
     sessions: sessionmaker[Session] = sessionmaker(engine, expire_on_commit=False)
 
@@ -91,6 +91,13 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         identifiers=identifiers,
         approval_lifetime=timedelta(seconds=settings.approval_lifetime_seconds),
     )
+    recovery_service = StaleStateRecoveryService(
+        uow_factory=uow_factory,
+        clock=clock,
+        identifiers=identifiers,
+        execution_threshold=timedelta(seconds=settings.stale_execution_seconds),
+        action_threshold=timedelta(seconds=settings.stale_action_execution_seconds),
+    )
     return AppDependencies(
         uow_factory=uow_factory,
         ingestion=AlertIngestionService(uow_factory, clock, identifiers),
@@ -100,6 +107,7 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         identifiers=identifiers,
         action_catalog=catalog,
         approval_service=approval_service,
+        recovery_service=recovery_service,
         clock=clock,
         max_request_bytes=settings.max_request_bytes,
     )

@@ -1,5 +1,6 @@
 """Narrow SQLAlchemy repository implementations and explicit domain mappings."""
 
+from datetime import datetime
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -24,9 +25,10 @@ from security_triage_agent.application.persistence import (
     TriageExecutionRecord,
 )
 from security_triage_agent.application.tool_gateway import ToolInvocationRecord
-from security_triage_agent.domain.actions import ActionProposal
+from security_triage_agent.domain.actions import ActionProposal, ActionState
 from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.approvals import ApprovalRecord
+from security_triage_agent.domain.states import TriageExecutionState
 from security_triage_agent.domain.triage import TriageResult
 from security_triage_agent.evaluation.persistence import EvaluationCaseRecord, EvaluationRunRecord
 from security_triage_agent.evaluation.scoring import EvaluationAggregate, EvaluationCaseScore
@@ -134,6 +136,17 @@ class SqlAlchemyExecutionRepository:
             )
             for row in rows
         )
+
+    def list_running_before(self, cutoff: datetime) -> tuple[TriageExecutionRecord, ...]:
+        rows = self._session.scalars(
+            select(TriageExecutionRow)
+            .where(
+                TriageExecutionRow.state == TriageExecutionState.RUNNING.value,
+                TriageExecutionRow.updated_at < cutoff.isoformat(),
+            )
+            .order_by(TriageExecutionRow.updated_at, TriageExecutionRow.execution_id)
+        )
+        return tuple(record for row in rows if (record := self.get(row.execution_id)) is not None)
 
 
 class SqlAlchemyToolInvocationRepository:
@@ -332,6 +345,19 @@ class SqlAlchemyActionExecutionRepository:
         row.failure_category = execution.failure_category
         row.mode = execution.mode
         row.result = execution.result
+
+    def list_executing_before(self, cutoff: datetime) -> tuple[ActionExecutionRecord, ...]:
+        rows = self._session.scalars(
+            select(ActionExecutionRow)
+            .where(
+                ActionExecutionRow.state == ActionState.EXECUTING.value,
+                ActionExecutionRow.started_at < cutoff.isoformat(),
+            )
+            .order_by(ActionExecutionRow.started_at, ActionExecutionRow.action_execution_id)
+        )
+        return tuple(
+            record for row in rows if (record := self.get(row.action_execution_id)) is not None
+        )
 
 
 class SqlAlchemyAuditRepository:

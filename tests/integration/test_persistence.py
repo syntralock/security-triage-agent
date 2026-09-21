@@ -266,6 +266,41 @@ def test_reused_action_identifier_exposes_sanitized_constraint_failure(
     assert str(captured.value) == "persistence transaction failed"
 
 
+def test_reused_tool_invocation_identifier_exposes_sanitized_constraint_failure(
+    uow_factory: sessionmaker[Session],
+) -> None:
+    invocation = ToolInvocationRecord.model_validate(
+        {
+            "execution_id": "execution-001",
+            "correlation_id": "correlation-001",
+            "call_id": "provider-reused-call-id",
+            "tool_name": "get_user_risk",
+            "sanitized_arguments": {"user_id": "user-alex"},
+            "authorization": "ALLOWED",
+            "outcome": "SUCCESS",
+            "started_at": NOW,
+            "completed_at": NOW,
+            "duration_ms": 2,
+        }
+    )
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        uow.alerts.add(alert())
+        uow.flush()
+        uow.executions.add(execution())
+        uow.flush()
+        uow.tool_invocations.add(invocation, {"status": "FOUND"})
+        uow.commit()
+
+    with pytest.raises(PersistenceError) as captured, SqlAlchemyUnitOfWork(uow_factory) as uow:
+        uow.tool_invocations.add(invocation, {"status": "FOUND"})
+        uow.flush()
+
+    sqlalchemy_error = captured.value.__cause__
+    assert isinstance(sqlalchemy_error, IntegrityError)
+    assert isinstance(sqlalchemy_error.orig, sqlite3.IntegrityError)
+    assert str(captured.value) == "persistence transaction failed"
+
+
 def test_tool_and_action_execution_round_trip(uow_factory: sessionmaker[Session]) -> None:
     invocation = ToolInvocationRecord.model_validate(
         {

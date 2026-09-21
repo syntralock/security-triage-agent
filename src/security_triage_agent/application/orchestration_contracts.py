@@ -15,7 +15,6 @@ from security_triage_agent.domain.triage import TriageResult
 
 class ReasonerToolCall(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Identifier
     arguments: dict[str, object]
 

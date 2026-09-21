@@ -52,6 +52,9 @@ from security_triage_agent.logging import log_event
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
 FINALIZATION_FAILURE = "FINALIZATION_FAILED"
+REPLAY_LOOKUP_FAILURE = "REPLAY_LOOKUP_FAILED"
+START_PERSISTENCE_FAILURE = "START_PERSISTENCE_FAILED"
+TOOL_PERSISTENCE_FAILURE = "TOOL_PERSISTENCE_FAILED"
 RECOVERY_FAILURE = "RECOVERY_FAILED"
 
 
@@ -165,9 +168,10 @@ class TriageOrchestrator:
                     candidate = None
                 break
             if isinstance(step, ReasonerToolCall):
+                invocation_id = self._ids.next_id("tool-invocation")
                 result = self._gateway.invoke(
                     ProposedToolRequest(
-                        call_id=step.call_id,
+                        call_id=invocation_id,
                         tool_name=step.tool_name,
                         arguments=step.arguments,
                     ),
@@ -232,18 +236,32 @@ class TriageOrchestrator:
                     reason_code=OrchestrationReasonCode.IDEMPOTENT_REPLAY,
                     result=result,
                 )
-        except Exception:
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "triage.persistence_failed",
+                execution_id=execution_id,
+                correlation_id=correlation_id,
+                failure_category=REPLAY_LOOKUP_FAILURE,
+                stage="load_idempotent_replay",
+                exception_type=self._root_exception_type(exc),
+            )
             return self._persistence_failure(execution_id, correlation_id)
 
     def _persist_start(
         self, alert: SecurityAlert, key: str, execution_id: str, correlation_id: str
     ) -> bool:
         now = self._clock.now()
+        stage = "load_alert"
         try:
             with self._uow_factory() as uow:
                 if uow.alerts.get(alert.alert_id) is None:
+                    stage = "persist_alert"
                     uow.alerts.add(alert)
+                    stage = "flush_alert"
                     uow.flush()
+                stage = "persist_execution"
                 uow.executions.add(
                     TriageExecutionRecord(
                         execution_id=execution_id,
@@ -254,6 +272,7 @@ class TriageOrchestrator:
                         updated_at=now,
                     )
                 )
+                stage = "append_start_audit"
                 uow.audit.append(
                     self._audit(
                         "triage.execution_started",
@@ -262,17 +281,38 @@ class TriageOrchestrator:
                         {"state": "RUNNING"},
                     )
                 )
+                stage = "commit_start"
                 uow.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            exception_type = self._root_exception_type(exc)
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "triage.persistence_failed",
+                execution_id=execution_id,
+                correlation_id=correlation_id,
+                failure_category=START_PERSISTENCE_FAILURE,
+                stage=stage,
+                exception_type=exception_type,
+            )
+            self._record_persistence_failure(
+                execution_id,
+                correlation_id,
+                START_PERSISTENCE_FAILURE,
+                stage,
+                exception_type,
+            )
             return False
 
     def _persist_tool(
         self, invocation: ToolInvocationRecord, result: dict[str, object] | None
     ) -> bool:
+        stage = "persist_tool_invocation"
         try:
             with self._uow_factory() as uow:
                 uow.tool_invocations.add(invocation, result)
+                stage = "append_tool_audit"
                 uow.audit.append(
                     self._audit(
                         "triage.tool_invoked",
@@ -291,9 +331,28 @@ class TriageOrchestrator:
                         ),
                     )
                 )
+                stage = "commit_tool_iteration"
                 uow.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            exception_type = self._root_exception_type(exc)
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "triage.persistence_failed",
+                execution_id=invocation.execution_id,
+                correlation_id=invocation.correlation_id,
+                failure_category=TOOL_PERSISTENCE_FAILURE,
+                stage=stage,
+                exception_type=exception_type,
+            )
+            self._record_persistence_failure(
+                invocation.execution_id,
+                invocation.correlation_id,
+                TOOL_PERSISTENCE_FAILURE,
+                stage,
+                exception_type,
+            )
             return False
 
     def _persist_final(
@@ -362,20 +421,22 @@ class TriageOrchestrator:
                 stage=stage,
                 exception_type=self._root_exception_type(exc),
             )
-            self._record_terminal_persistence_failure(
+            self._record_persistence_failure(
                 execution_id,
                 correlation_id,
+                FINALIZATION_FAILURE,
                 stage,
                 self._root_exception_type(exc),
             )
             return False
 
-    def _record_terminal_persistence_failure(
+    def _record_persistence_failure(
         self,
         execution_id: str,
         correlation_id: str,
-        finalization_stage: str,
-        finalization_exception_type: str,
+        failure_category: str,
+        failure_stage: str,
+        failure_exception_type: str,
     ) -> None:
         recovery_stage = "load_execution"
         try:
@@ -389,7 +450,7 @@ class TriageOrchestrator:
                         update={
                             "state": TriageExecutionState.FAILED,
                             "updated_at": self._clock.now(),
-                            "failure_category": FINALIZATION_FAILURE,
+                            "failure_category": failure_category,
                         }
                     )
                 )
@@ -400,9 +461,9 @@ class TriageOrchestrator:
                         execution_id,
                         correlation_id,
                         {
-                            "failure_category": FINALIZATION_FAILURE,
-                            "stage": finalization_stage,
-                            "exception_type": finalization_exception_type,
+                            "failure_category": failure_category,
+                            "stage": failure_stage,
+                            "exception_type": failure_exception_type,
                         },
                         outcome=AuditOutcome.FAILED,
                     )

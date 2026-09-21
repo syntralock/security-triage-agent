@@ -24,7 +24,6 @@ class DemoReasoner:
         )
         if not context.evidence and user is not None and context.remaining_total_tool_calls > 0:
             return ReasonerToolCall(
-                call_id=f"demo-risk-{context.alert.alert_id}",
                 tool_name="get_user_risk",
                 arguments={"user_id": str(user.identifier)},
             )

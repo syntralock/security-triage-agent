@@ -38,7 +38,6 @@ class ScenarioResponses:
             parsed: dict[str, Any] = {
                 "step": {
                     "step_type": "TOOL_CALL",
-                    "call_id": "mocked-openai-risk",
                     "tool_name": "get_user_risk",
                     "arguments": {"user_id": user["identifier"]},
                 }
@@ -129,7 +128,7 @@ def test_openai_reasoner_uses_same_runner_and_records_identity(
     assert result is not None
     assert len(result.evidence) == 1
     assert result.evidence[0].evidence_id.startswith("evidence-")
-    assert result.tool_calls[0].invocation_id == "mocked-openai-risk"
+    assert result.tool_calls[0].invocation_id.startswith("tool-invocation-")
 
     engine = create_engine(settings.database_url)
     with engine.connect() as connection:

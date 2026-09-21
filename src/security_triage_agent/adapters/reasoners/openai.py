@@ -54,49 +54,42 @@ class IpArguments(DomainModel):
 
 class OpenAIGetRecentSignins(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_recent_signins"]
     arguments: UserArguments
 
 
 class OpenAIGetUserRisk(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_user_risk"]
     arguments: UserArguments
 
 
 class OpenAIGetDeviceContext(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_device_context"]
     arguments: DeviceArguments
 
 
 class OpenAIGetIpReputation(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_ip_reputation"]
     arguments: IpArguments
 
 
 class OpenAIGetMfaEvents(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_mfa_events"]
     arguments: UserArguments
 
 
 class OpenAIFindRelatedAlerts(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["find_related_alerts"]
     arguments: UserArguments
 
 
 class OpenAIGetIdentityContext(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
-    call_id: Identifier
     tool_name: Literal["get_identity_context"]
     arguments: UserArguments
 
@@ -302,7 +295,6 @@ class OpenAIReasoner:
                 )
             else:
                 result = ReasonerToolCall(
-                    call_id=step.call_id,
                     tool_name=step.tool_name,
                     arguments=step.arguments.model_dump(),
                 )

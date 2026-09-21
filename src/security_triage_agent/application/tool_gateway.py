@@ -41,7 +41,7 @@ class AuthorizationResult(StrEnum):
 
 
 class ProposedToolRequest(DomainModel):
-    """Untrusted model proposal; it carries no policy or authorization fields."""
+    """Validated semantics with an application-assigned invocation identifier."""
 
     call_id: Identifier
     tool_name: Identifier

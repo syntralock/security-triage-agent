@@ -72,7 +72,6 @@ def test_maps_strict_tool_proposal_without_executable_tools(fixture_dataset: Any
         parsed={
             "step": {
                 "step_type": "TOOL_CALL",
-                "call_id": "model-call-1",
                 "tool_name": "get_user_risk",
                 "arguments": {"user_id": user_id},
             }
@@ -80,7 +79,6 @@ def test_maps_strict_tool_proposal_without_executable_tools(fixture_dataset: Any
     )
     step = reasoner(responses).next_step(context(alert))
     assert step == ReasonerToolCall(
-        call_id="model-call-1",
         tool_name="get_user_risk",
         arguments={"user_id": user_id},
     )
@@ -205,9 +203,16 @@ def test_unknown_candidate_reference_id_fails_closed(fixture_dataset: Any) -> No
         {
             "step": {
                 "step_type": "TOOL_CALL",
-                "call_id": "x",
                 "tool_name": "run_shell",
                 "arguments": {},
+            }
+        },
+        {
+            "step": {
+                "step_type": "TOOL_CALL",
+                "call_id": "provider-controlled-id",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
             }
         },
         {
@@ -382,7 +387,6 @@ def test_provider_output_models_forbid_extra_fields() -> None:
             {
                 "step": {
                     "step_type": "TOOL_CALL",
-                    "call_id": "x",
                     "tool_name": "get_user_risk",
                     "arguments": {"user_id": "user-1"},
                     "authorization": "APPROVED",

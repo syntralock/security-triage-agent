@@ -99,7 +99,9 @@ def alert(*, include_riley: bool = False) -> SecurityAlert:
     )
 
 
-def expected_evidence(call_id: str = "call-risk", status: str = "FOUND") -> EvidenceReference:
+def expected_evidence(
+    call_id: str = "tool-invocation-0001", status: str = "FOUND"
+) -> EvidenceReference:
     return EvidenceReference(
         evidence_id="evidence-0001",
         source_type="get_user_risk",
@@ -111,7 +113,9 @@ def expected_evidence(call_id: str = "call-risk", status: str = "FOUND") -> Evid
     )
 
 
-def expected_call(call_id: str = "call-risk", status: str = "FOUND") -> ToolCallReference:
+def expected_call(
+    call_id: str = "tool-invocation-0001", status: str = "FOUND"
+) -> ToolCallReference:
     return ToolCallReference(
         invocation_id=call_id,
         tool_name="get_user_risk",
@@ -192,6 +196,146 @@ def run(service: TriageOrchestrator, source: SecurityAlert) -> OrchestrationOutc
     )
 
 
+@pytest.mark.parametrize(
+    "failure_stage",
+    [
+        "load_alert",
+        "persist_alert",
+        "flush_alert",
+        "persist_execution",
+        "append_start_audit",
+        "commit_start",
+    ],
+)
+def test_start_persistence_stage_failure_is_sanitized_and_atomic(
+    tmp_path: Path,
+    fixture_dataset: FixtureDataset,
+    caplog: pytest.LogCaptureFixture,
+    failure_stage: str,
+) -> None:
+    factory = migrate(tmp_path / f"start-failure-{failure_stage}.db")
+
+    class SyntheticStartPersistenceError(RuntimeError):
+        pass
+
+    class FailingStartUnitOfWork(SqlAlchemyUnitOfWork):
+        failed = False
+
+        def __enter__(self) -> "FailingStartUnitOfWork":
+            super().__enter__()
+            if type(self).failed:
+                return self
+
+            def fail(*_args: object, **_kwargs: object) -> None:
+                type(self).failed = True
+                raise SyntheticStartPersistenceError()
+
+            if failure_stage == "load_alert":
+                self.alerts.get = fail  # type: ignore[method-assign]
+            elif failure_stage == "persist_alert":
+                self.alerts.add = fail  # type: ignore[method-assign]
+            elif failure_stage == "persist_execution":
+                self.executions.add = fail  # type: ignore[method-assign]
+            elif failure_stage == "append_start_audit":
+                self.audit.append = fail  # type: ignore[method-assign]
+            return self
+
+        def flush(self) -> None:
+            if failure_stage == "flush_alert" and not type(self).failed:
+                type(self).failed = True
+                raise SyntheticStartPersistenceError()
+            super().flush()
+
+        def commit(self) -> None:
+            if failure_stage == "commit_start" and not type(self).failed:
+                type(self).failed = True
+                raise SyntheticStartPersistenceError()
+            super().commit()
+
+    service = TriageOrchestrator(
+        reasoner=FakeReasoner([ReasonerCandidate(candidate=candidate())]),
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: FailingStartUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+    logger = logging.getLogger("security_triage_agent.application.orchestrator")
+    logger.disabled = False
+    logger.addHandler(caplog.handler)
+    caplog.set_level("ERROR", logger=logger.name)
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
+    logger.removeHandler(caplog.handler)
+
+    assert not outcome.durable
+    failure_record = next(
+        record for record in caplog.records if record.getMessage() == "triage.persistence_failed"
+    )
+    assert cast(Any, failure_record).context == {
+        "execution_id": "execution-orchestration",
+        "correlation_id": "correlation-orchestration",
+        "failure_category": "START_PERSISTENCE_FAILED",
+        "stage": failure_stage,
+        "exception_type": "SyntheticStartPersistenceError",
+    }
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        assert uow.alerts.get("alert-orchestration") is None
+        assert uow.executions.get("execution-orchestration") is None
+        assert uow.audit.list_for_target("triage_execution", "execution-orchestration") == ()
+
+
+def test_replay_lookup_failure_is_sanitized(
+    tmp_path: Path, fixture_dataset: FixtureDataset, caplog: pytest.LogCaptureFixture
+) -> None:
+    factory = migrate(tmp_path / "replay-lookup-failure.db")
+
+    class SyntheticReplayLookupError(RuntimeError):
+        pass
+
+    class FailingReplayUnitOfWork(SqlAlchemyUnitOfWork):
+        def __enter__(self) -> "FailingReplayUnitOfWork":
+            super().__enter__()
+
+            def fail(_key: str) -> None:
+                raise SyntheticReplayLookupError()
+
+            self.executions.get_by_idempotency_key = fail  # type: ignore[assignment]
+            return self
+
+    service = TriageOrchestrator(
+        reasoner=FakeReasoner([ReasonerCandidate(candidate=candidate())]),
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: FailingReplayUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+    logger = logging.getLogger("security_triage_agent.application.orchestrator")
+    logger.disabled = False
+    logger.addHandler(caplog.handler)
+    caplog.set_level("ERROR", logger=logger.name)
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
+    logger.removeHandler(caplog.handler)
+
+    assert not outcome.durable
+    failure_record = next(
+        record for record in caplog.records if record.getMessage() == "triage.persistence_failed"
+    )
+    assert cast(Any, failure_record).context == {
+        "execution_id": "execution-orchestration",
+        "correlation_id": "correlation-orchestration",
+        "failure_category": "REPLAY_LOOKUP_FAILED",
+        "stage": "load_idempotent_replay",
+        "exception_type": "SyntheticReplayLookupError",
+    }
+
+
 def test_happy_path_is_durable_and_reconstructable(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
@@ -204,9 +348,7 @@ def test_happy_path_is_durable_and_reconstructable(
         }
     )
     script = [
-        ReasonerToolCall(
-            call_id="call-risk", tool_name="get_user_risk", arguments={"user_id": "user-alex"}
-        ),
+        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
         ReasonerCandidate(
             candidate=candidate(
                 evidence_items=(expected_evidence(),),
@@ -234,12 +376,11 @@ def test_happy_path_is_durable_and_reconstructable(
     ("step", "reason"),
     [
         (
-            ReasonerToolCall(call_id="unknown", tool_name="unknown_tool", arguments={}),
+            ReasonerToolCall(tool_name="unknown_tool", arguments={}),
             OrchestrationReasonCode.TOOL_REQUEST_DENIED,
         ),
         (
             ReasonerToolCall(
-                call_id="scope",
                 tool_name="get_user_risk",
                 arguments={"user_id": "user-riley"},
             ),
@@ -267,11 +408,10 @@ def test_duplicate_request_terminates_without_loop(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
     request = ReasonerToolCall(
-        call_id="duplicate-1",
         tool_name="get_user_risk",
         arguments={"user_id": "user-alex"},
     )
-    repeated = request.model_copy(update={"call_id": "duplicate-2"})
+    repeated = request.model_copy()
     service, factory, fake, source = orchestrator(
         tmp_path, fixture_dataset, [request, repeated, repeated]
     )
@@ -280,6 +420,258 @@ def test_duplicate_request_terminates_without_loop(
     assert len(fake.contexts) == 2
     with SqlAlchemyUnitOfWork(factory) as uow:
         assert len(uow.tool_invocations.list_for_execution(outcome.execution_id)) == 2
+
+
+def test_identical_provider_tool_proposals_receive_distinct_canonical_ids(
+    tmp_path: Path, fixture_dataset: FixtureDataset
+) -> None:
+    factory = migrate(tmp_path / "tool-identity.db")
+    fake = FakeReasoner(
+        [
+            ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+            ReasonerCandidate(
+                candidate=candidate(
+                    evidence_items=(expected_evidence(),),
+                    tool_calls=(expected_call(),),
+                )
+            ),
+            ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+            ReasonerCandidate(
+                candidate=candidate(
+                    evidence_items=(
+                        expected_evidence("tool-invocation-0002").model_copy(
+                            update={"evidence_id": "evidence-0002"}
+                        ),
+                    ),
+                    tool_calls=(expected_call("tool-invocation-0002"),),
+                )
+            ),
+        ]
+    )
+    service = TriageOrchestrator(
+        reasoner=fake,
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+
+    for number in (1, 2):
+        source = alert().model_copy(
+            update={
+                "alert_id": f"alert-tool-identity-{number}",
+                "original_payload": alert().original_payload.model_copy(
+                    update={
+                        "reference_id": f"payload-tool-identity-{number}",
+                        "payload_digest": f"sha256:{number}" + "0" * 63,
+                    }
+                ),
+            }
+        )
+        outcome = service.run(
+            source,
+            idempotency_key=f"idem-tool-identity-{number}",
+            execution_id=f"execution-tool-identity-{number}",
+            correlation_id=f"correlation-tool-identity-{number}",
+        )
+        assert outcome.durable
+
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        first = uow.tool_invocations.list_for_execution("execution-tool-identity-1")
+        second = uow.tool_invocations.list_for_execution("execution-tool-identity-2")
+        assert first[0].call_id == "tool-invocation-0001"
+        assert second[0].call_id == "tool-invocation-0002"
+        assert first[0].sanitized_arguments == second[0].sanitized_arguments
+
+
+@pytest.mark.parametrize(
+    "failure_stage",
+    ["persist_tool_invocation", "append_tool_audit", "commit_tool_iteration"],
+)
+def test_tool_persistence_stage_failure_is_atomic_and_recovers_to_failed(
+    tmp_path: Path,
+    fixture_dataset: FixtureDataset,
+    caplog: pytest.LogCaptureFixture,
+    failure_stage: str,
+) -> None:
+    factory = migrate(tmp_path / f"tool-failure-{failure_stage}.db")
+
+    class SyntheticToolPersistenceError(RuntimeError):
+        pass
+
+    class FailingToolUnitOfWork(SqlAlchemyUnitOfWork):
+        commits = 0
+        failed = False
+
+        def __enter__(self) -> "FailingToolUnitOfWork":
+            super().__enter__()
+            if failure_stage == "persist_tool_invocation" and not type(self).failed:
+
+                def fail_invocation(_invocation: object, _result: object = None) -> None:
+                    type(self).failed = True
+                    raise SyntheticToolPersistenceError()
+
+                self.tool_invocations.add = fail_invocation  # type: ignore[assignment]
+            if failure_stage == "append_tool_audit" and not type(self).failed:
+                delegate = self.audit
+                outer_uow = self
+
+                class FailingAuditRepository:
+                    def append(self, audit_event: Any) -> None:
+                        if audit_event.event_type == "triage.tool_invoked":
+                            type(outer_uow).failed = True
+                            raise SyntheticToolPersistenceError()
+                        delegate.append(audit_event)
+
+                    def list_for_target(self, target_type: str, target_id: str) -> tuple[Any, ...]:
+                        return delegate.list_for_target(target_type, target_id)
+
+                self.audit = FailingAuditRepository()
+            return self
+
+        def commit(self) -> None:
+            type(self).commits += 1
+            if failure_stage == "commit_tool_iteration" and type(self).commits == 2:
+                raise SyntheticToolPersistenceError()
+            super().commit()
+
+    service = TriageOrchestrator(
+        reasoner=FakeReasoner(
+            [ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"})]
+        ),
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: FailingToolUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+    logger = logging.getLogger("security_triage_agent.application.orchestrator")
+    logger.disabled = False
+    logger.addHandler(caplog.handler)
+    caplog.set_level("ERROR", logger=logger.name)
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
+    logger.removeHandler(caplog.handler)
+
+    assert not outcome.durable
+    assert outcome.reason_code is OrchestrationReasonCode.PERSISTENCE_FAILURE
+    failure_record = next(
+        record for record in caplog.records if record.getMessage() == "triage.persistence_failed"
+    )
+    assert cast(Any, failure_record).context == {
+        "execution_id": "execution-orchestration",
+        "correlation_id": "correlation-orchestration",
+        "failure_category": "TOOL_PERSISTENCE_FAILED",
+        "stage": failure_stage,
+        "exception_type": "SyntheticToolPersistenceError",
+    }
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        execution = uow.executions.get("execution-orchestration")
+        assert execution is not None and execution.state is TriageExecutionState.FAILED
+        assert execution.failure_category == "TOOL_PERSISTENCE_FAILED"
+        assert uow.tool_invocations.list_for_execution(execution.execution_id) == ()
+        assert uow.triage_results.get_for_execution(execution.execution_id) is None
+        events = uow.audit.list_for_target("triage_execution", execution.execution_id)
+        assert [event.event_type for event in events] == [
+            "triage.execution_started",
+            "triage.persistence_failed",
+        ]
+        assert events[-1].data == {
+            "failure_category": "TOOL_PERSISTENCE_FAILED",
+            "stage": failure_stage,
+            "exception_type": "SyntheticToolPersistenceError",
+        }
+
+
+def test_tool_persistence_and_recovery_failure_is_safely_observable(
+    tmp_path: Path, fixture_dataset: FixtureDataset, caplog: pytest.LogCaptureFixture
+) -> None:
+    factory = migrate(tmp_path / "tool-recovery-failure.db")
+
+    class FailingToolAndRecoveryUnitOfWork(SqlAlchemyUnitOfWork):
+        commits = 0
+
+        def commit(self) -> None:
+            type(self).commits += 1
+            if type(self).commits >= 2:
+                raise PersistenceError("synthetic transaction failure")
+            super().commit()
+
+    service = TriageOrchestrator(
+        reasoner=FakeReasoner(
+            [ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"})]
+        ),
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: FailingToolAndRecoveryUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+    logger = logging.getLogger("security_triage_agent.application.orchestrator")
+    logger.disabled = False
+    logger.addHandler(caplog.handler)
+    caplog.set_level("ERROR", logger=logger.name)
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
+    logger.removeHandler(caplog.handler)
+
+    assert not outcome.durable
+    recovery_record = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "triage.persistence_failure_record_failed"
+    )
+    assert cast(Any, recovery_record).context == {
+        "execution_id": "execution-orchestration",
+        "correlation_id": "correlation-orchestration",
+        "failure_category": "RECOVERY_FAILED",
+        "recovery_stage": "commit",
+        "exception_type": "PersistenceError",
+    }
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        execution = uow.executions.get("execution-orchestration")
+        assert execution is not None and execution.state is TriageExecutionState.RUNNING
+        assert uow.tool_invocations.list_for_execution(execution.execution_id) == ()
+        assert uow.triage_results.get_for_execution(execution.execution_id) is None
+        assert [
+            event.event_type
+            for event in uow.audit.list_for_target("triage_execution", execution.execution_id)
+        ] == ["triage.execution_started"]
+
+
+def test_provider_shaped_first_candidate_has_no_pre_finalization_write(
+    tmp_path: Path, fixture_dataset: FixtureDataset
+) -> None:
+    provider_step = {
+        "step_type": "CANDIDATE",
+        "candidate": candidate().model_dump(mode="json"),
+    }
+    service, factory, fake, source = orchestrator(tmp_path, fixture_dataset, [provider_step])
+    outcome = run(service, source)
+
+    assert outcome.durable
+    assert outcome.reason_code is OrchestrationReasonCode.POLICY_SAFE_REVIEW
+    assert len(fake.contexts) == 1
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        execution = uow.executions.get(outcome.execution_id)
+        assert execution is not None and execution.state is TriageExecutionState.NEEDS_REVIEW
+        assert uow.tool_invocations.list_for_execution(outcome.execution_id) == ()
+        assert uow.triage_results.get_for_execution(outcome.execution_id) == outcome.result
+        assert [
+            event.event_type
+            for event in uow.audit.list_for_target("triage_execution", outcome.execution_id)
+        ] == [
+            "triage.execution_started",
+            "triage.policy_enforced",
+            "triage.execution_terminal",
+        ]
 
 
 def test_fabricated_references_force_review(
@@ -301,9 +693,7 @@ def test_iteration_and_deadline_bounds(tmp_path: Path, fixture_dataset: FixtureD
     with pytest.raises(ValidationError):
         OrchestrationLimits(deadline_ms=30_001)
 
-    request = ReasonerToolCall(
-        call_id="one", tool_name="get_user_risk", arguments={"user_id": "user-alex"}
-    )
+    request = ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"})
     service, _, _, source = orchestrator(
         tmp_path,
         fixture_dataset,
@@ -326,12 +716,8 @@ def test_total_and_per_tool_budget_exhaustion(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
     steps = [
-        ReasonerToolCall(
-            call_id="one", tool_name="get_user_risk", arguments={"user_id": "user-alex"}
-        ),
-        ReasonerToolCall(
-            call_id="two", tool_name="get_mfa_events", arguments={"user_id": "user-alex"}
-        ),
+        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+        ReasonerToolCall(tool_name="get_mfa_events", arguments={"user_id": "user-alex"}),
     ]
     service, _, _, source = orchestrator(
         tmp_path,
@@ -343,9 +729,7 @@ def test_total_and_per_tool_budget_exhaustion(
 
     per_tool_steps = [
         steps[0],
-        ReasonerToolCall(
-            call_id="riley", tool_name="get_user_risk", arguments={"user_id": "user-riley"}
-        ),
+        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-riley"}),
     ]
     service, _, _, source = orchestrator(
         tmp_path / "per-tool",
@@ -411,7 +795,6 @@ def test_typed_not_found_is_accumulated_as_evidence(
     )
     script = [
         ReasonerToolCall(
-            call_id="call-risk",
             tool_name="get_user_risk",
             arguments={"user_id": "user-missing"},
         ),
@@ -428,16 +811,61 @@ def test_typed_not_found_is_accumulated_as_evidence(
     assert fake.contexts[1].evidence[0].outcome["status"] == "NOT_FOUND"
 
 
+def test_candidate_after_multiple_tools_is_durable_from_fresh_session(
+    tmp_path: Path, fixture_dataset: FixtureDataset
+) -> None:
+    second_call = ToolCallReference(
+        invocation_id="tool-invocation-0002",
+        tool_name="get_mfa_events",
+        tool_version="1.0.0",
+        called_at=NOW,
+        summary="get_mfa_events returned FOUND.",
+    )
+    second_evidence = EvidenceReference(
+        evidence_id="evidence-0002",
+        source_type="get_mfa_events",
+        source_reference=second_call.invocation_id,
+        collected_at=NOW,
+        source_version="v1",
+        summary="Sanitized get_mfa_events outcome: FOUND.",
+        tool_invocation_id=second_call.invocation_id,
+    )
+    steps = [
+        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+        ReasonerToolCall(tool_name="get_mfa_events", arguments={"user_id": "user-alex"}),
+        ReasonerCandidate(
+            candidate=candidate(
+                evidence_items=(expected_evidence(), second_evidence),
+                tool_calls=(expected_call(), second_call),
+            )
+        ),
+    ]
+    service, factory, fake, source = orchestrator(tmp_path, fixture_dataset, steps)
+    outcome = run(service, source)
+
+    assert outcome.durable
+    assert outcome.reason_code is OrchestrationReasonCode.COMPLETED
+    assert len(fake.contexts[2].evidence) == 2
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        invocations = uow.tool_invocations.list_for_execution(outcome.execution_id)
+        persisted = uow.triage_results.get_for_execution(outcome.execution_id)
+        assert [item.call_id for item in invocations] == [
+            "tool-invocation-0001",
+            "tool-invocation-0002",
+        ]
+        assert persisted is not None
+        assert [item.evidence_id for item in persisted.evidence] == [
+            "evidence-0001",
+            "evidence-0002",
+        ]
+
+
 def test_evidence_growth_limit_terminates_safely(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
     steps = [
-        ReasonerToolCall(
-            call_id="risk", tool_name="get_user_risk", arguments={"user_id": "user-alex"}
-        ),
-        ReasonerToolCall(
-            call_id="mfa", tool_name="get_mfa_events", arguments={"user_id": "user-alex"}
-        ),
+        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+        ReasonerToolCall(tool_name="get_mfa_events", arguments={"user_id": "user-alex"}),
     ]
     service, _, fake, source = orchestrator(
         tmp_path,
@@ -527,11 +955,11 @@ def test_identical_action_recommendations_receive_distinct_canonical_ids(
             severity=Severity.CRITICAL,
             confidence=Decimal("0.999999999999999999"),
             evidence=(
-                expected_evidence(f"call-{number}").model_copy(
+                expected_evidence(f"tool-invocation-{number:04d}").model_copy(
                     update={"evidence_id": f"evidence-{number:04d}"}
                 ),
             ),
-            tool_calls=(expected_call(f"call-{number}"),),
+            tool_calls=(expected_call(f"tool-invocation-{number:04d}"),),
             reasoning_summary="Provider-derived evidence supports escalation.",
             recommended_actions=(remediation,),
             escalation_required=True,
@@ -541,13 +969,11 @@ def test_identical_action_recommendations_receive_distinct_canonical_ids(
     fake = FakeReasoner(
         [
             ReasonerToolCall(
-                call_id="call-1",
                 tool_name="get_user_risk",
                 arguments={"user_id": "user-riley"},
             ),
             ReasonerCandidate(candidate=assessment(1)),
             ReasonerToolCall(
-                call_id="call-2",
                 tool_name="get_user_risk",
                 arguments={"user_id": "user-riley"},
             ),
@@ -696,7 +1122,6 @@ def test_adapter_failure_and_invalid_result_become_review(
         reasoner=FakeReasoner(
             [
                 ReasonerToolCall(
-                    call_id="failed-call",
                     tool_name="get_user_risk",
                     arguments={"user_id": "user-alex"},
                 )
@@ -726,7 +1151,6 @@ def test_gateway_timeout_becomes_review(tmp_path: Path) -> None:
         reasoner=FakeReasoner(
             [
                 ReasonerToolCall(
-                    call_id="timeout-call",
                     tool_name="get_user_risk",
                     arguments={"user_id": "user-alex"},
                 )

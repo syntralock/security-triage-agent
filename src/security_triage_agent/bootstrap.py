@@ -74,7 +74,7 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         gateway=ToolGateway(
             registry, now=clock.now, monotonic=lambda: clock.monotonic_ms() * 1_000_000
         ),
-        policy=DeterministicPolicy(catalog),
+        policy=DeterministicPolicy(catalog, lambda: identifiers.next_id("action")),
         uow_factory=uow_factory,
         clock=clock,
         identifiers=identifiers,

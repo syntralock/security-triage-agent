@@ -3,6 +3,7 @@
 from security_triage_agent.domain.actions import (
     ActionLifecycle,
     ActionProposal,
+    ActionRecommendation,
     ActionReference,
     ActionState,
 )
@@ -27,6 +28,7 @@ from security_triage_agent.domain.triage import Disposition, Severity, TriageRes
 __all__ = [
     "ActionLifecycle",
     "ActionProposal",
+    "ActionRecommendation",
     "ActionReference",
     "ActionState",
     "ApprovalDecision",

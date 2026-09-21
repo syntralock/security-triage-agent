@@ -20,7 +20,7 @@ from security_triage_agent.application.orchestration_contracts import (
 )
 from security_triage_agent.application.policy import CandidateAssessment
 from security_triage_agent.domain._base import DomainModel, Identifier
-from security_triage_agent.domain.actions import ActionProposal
+from security_triage_agent.domain.actions import ActionRecommendation
 from security_triage_agent.domain.entities import EntityType
 from security_triage_agent.domain.triage import Disposition, Severity
 from security_triage_agent.logging import log_event
@@ -130,7 +130,6 @@ class OpenAIEntityReference(DomainModel):
 
 
 class OpenAIDisableAccount(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["disable_account"]
     target: OpenAIEntityReference
     parameters: OpenAINoParameters
@@ -138,7 +137,6 @@ class OpenAIDisableAccount(DomainModel):
 
 
 class OpenAIRevokeSessions(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["revoke_sessions"]
     target: OpenAIEntityReference
     parameters: OpenAINoParameters
@@ -146,7 +144,6 @@ class OpenAIRevokeSessions(DomainModel):
 
 
 class OpenAIResetPassword(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["reset_password"]
     target: OpenAIEntityReference
     parameters: OpenAINoParameters
@@ -154,7 +151,6 @@ class OpenAIResetPassword(DomainModel):
 
 
 class OpenAIIsolateDevice(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["isolate_device"]
     target: OpenAIEntityReference
     parameters: OpenAINoParameters
@@ -162,7 +158,6 @@ class OpenAIIsolateDevice(DomainModel):
 
 
 class OpenAIDeleteEmail(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["delete_email"]
     target: OpenAIEntityReference
     parameters: OpenAIDeleteEmailParameters
@@ -170,7 +165,6 @@ class OpenAIDeleteEmail(DomainModel):
 
 
 class OpenAIRemovePrivilege(DomainModel):
-    action_id: Identifier
     catalog_action_id: Literal["remove_privilege"]
     target: OpenAIEntityReference
     parameters: OpenAIRemovePrivilegeParameters
@@ -213,7 +207,7 @@ class OpenAICandidateAssessment(DomainModel):
             evidence=evidence,
             reasoning_summary=self.reasoning_summary,
             recommended_actions=tuple(
-                ActionProposal.model_validate(action.model_dump())
+                ActionRecommendation.model_validate(action.model_dump())
                 for action in self.recommended_actions
             ),
             escalation_required=self.escalation_required,

@@ -19,10 +19,9 @@ from security_triage_agent.domain.entities import EntityReference
 from security_triage_agent.domain.errors import InvalidStateTransitionError
 
 
-class ActionProposal(DomainModel):
-    """Recommendation for a registered action, without execution authority."""
+class ActionRecommendation(DomainModel):
+    """Untrusted semantic action recommendation without persistence identity."""
 
-    action_id: Identifier
     catalog_action_id: Identifier
     target: EntityReference
     parameters: Mapping[str, JsonValue]
@@ -38,6 +37,11 @@ class ActionProposal(DomainModel):
     @field_serializer("parameters")
     def serialize_parameters(self, value: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
         return _thaw_mapping(value)
+
+    def canonicalize(self, action_id: Identifier) -> "ActionProposal":
+        """Create an application-identified action after deterministic validation."""
+
+        return ActionProposal(action_id=action_id, **self.model_dump())
 
     @property
     def digest(self) -> str:
@@ -55,6 +59,12 @@ class ActionProposal(DomainModel):
             sort_keys=True,
         ).encode()
         return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
+class ActionProposal(ActionRecommendation):
+    """Policy-accepted canonical action, without execution authority."""
+
+    action_id: Identifier
 
 
 class ActionReference(DomainModel):

@@ -9,7 +9,7 @@ from security_triage_agent.application.orchestration_contracts import (
     ReasonerToolCall,
 )
 from security_triage_agent.application.policy import CandidateAssessment
-from security_triage_agent.domain.actions import ActionProposal
+from security_triage_agent.domain.actions import ActionRecommendation
 from security_triage_agent.domain.entities import EntityType
 from security_triage_agent.domain.triage import Disposition, Severity
 
@@ -28,11 +28,10 @@ class DemoReasoner:
                 tool_name="get_user_risk",
                 arguments={"user_id": str(user.identifier)},
             )
-        actions: tuple[ActionProposal, ...] = ()
+        actions: tuple[ActionRecommendation, ...] = ()
         if user is not None and context.alert.source_severity in {Severity.HIGH, Severity.CRITICAL}:
             actions = (
-                ActionProposal(
-                    action_id=f"demo-disable-{context.alert.alert_id}",
+                ActionRecommendation(
                     catalog_action_id="disable_account",
                     target=user,
                     parameters={},

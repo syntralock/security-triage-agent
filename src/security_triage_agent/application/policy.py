@@ -1,5 +1,6 @@
 """Versioned deterministic enforcement for untrusted candidate assessments."""
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -15,7 +16,11 @@ from security_triage_agent.domain._base import (
     UtcDatetime,
     Version,
 )
-from security_triage_agent.domain.actions import ActionProposal, ActionReference
+from security_triage_agent.domain.actions import (
+    ActionProposal,
+    ActionRecommendation,
+    ActionReference,
+)
 from security_triage_agent.domain.entities import EntityReference
 from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
 from security_triage_agent.domain.triage import Disposition, Severity, TriageResult
@@ -31,7 +36,7 @@ class CandidateAssessment(DomainModel):
     confidence: Confidence
     evidence: tuple[EvidenceReference, ...] = ()
     reasoning_summary: NonEmptyText
-    recommended_actions: tuple[ActionProposal, ...] = ()
+    recommended_actions: tuple[ActionRecommendation, ...] = ()
     escalation_required: bool = False
     escalation_reason: NonEmptyText | None = None
     tool_calls: tuple[ToolCallReference, ...] = ()
@@ -49,7 +54,6 @@ class PolicyReasonCode(StrEnum):
 
 
 class RejectedAction(DomainModel):
-    action_id: Identifier
     catalog_action_id: Identifier
     reason_code: PolicyReasonCode
 
@@ -75,8 +79,9 @@ class DeterministicPolicy:
 
     version = POLICY_VERSION
 
-    def __init__(self, catalog: ActionCatalog) -> None:
+    def __init__(self, catalog: ActionCatalog, action_id_factory: Callable[[], str]) -> None:
         self._catalog = catalog
+        self._action_id_factory = action_id_factory
 
     def evaluate(
         self,
@@ -112,15 +117,15 @@ class DeterministicPolicy:
                 reasons.append(reason)
                 rejected.append(
                     RejectedAction(
-                        action_id=action.action_id,
                         catalog_action_id=action.catalog_action_id,
                         reason_code=reason,
                     )
                 )
                 continue
-            accepted.append(action)
+            canonical = action.canonicalize(self._action_id_factory())
+            accepted.append(canonical)
             if definition is not None and definition.approval_required:
-                approvals.append(ActionReference.from_proposal(action))
+                approvals.append(ActionReference.from_proposal(canonical))
 
         if candidate.escalation_required:
             reasons.append(PolicyReasonCode.CANDIDATE_ESCALATION)

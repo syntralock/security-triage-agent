@@ -337,6 +337,54 @@ def test_reviewer_approval_and_simulation_survive_restart(
         ]
 
 
+def test_approval_for_one_canonical_action_cannot_authorize_another(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    first_alert = fixture_alert(fixture_root, index=1)
+    second_alert = dict(first_alert)
+    second_alert["alert_id"] = "alert-riley-risk-repeat"
+    second_alert["original_payload"] = {
+        "reference_id": "payload-alert-riley-risk-repeat",
+        "payload_digest": "sha256:" + "e" * 64,
+    }
+    with TestClient(create_app(deps)) as client:
+        ingest(client, first_alert)
+        ingested_second = client.post(
+            "/api/alerts", headers={"Idempotency-Key": "ingest-repeat"}, json=second_alert
+        )
+        assert ingested_second.status_code == 201
+
+        action_ids = []
+        for number, current in enumerate((first_alert, second_alert), start=1):
+            response = client.post(
+                f"/api/alerts/{current['alert_id']}/triage",
+                headers={"Idempotency-Key": f"triage-repeat-{number}"},
+                json={},
+            )
+            assert response.status_code == 200
+            action_ids.append(response.json()["result"]["recommended_actions"][0]["action_id"])
+
+        first_action_id, second_action_id = action_ids
+        assert first_action_id != second_action_id
+        approved = client.post(
+            f"/api/actions/{first_action_id}/approve",
+            json={"reason": "Approve only the first canonical action."},
+        )
+        assert approved.status_code == 200
+        approval = approved.json()["approval"]
+        assert approval["action_id"] == first_action_id
+        first_payload = client.get(f"/api/actions/{first_action_id}").json()
+        second_payload = client.get(f"/api/actions/{second_action_id}").json()
+        assert approval["action_digest"] == first_payload["action_digest"]
+        assert first_payload["action_digest"] == second_payload["action_digest"]
+        assert approval["policy_version"] == first_payload["policy_version"]
+        denied = client.post(f"/api/actions/{second_action_id}/execute", json={})
+        assert denied.status_code == 409
+        assert denied.json()["code"] == "APPROVAL_MISSING"
+        assert second_payload["approval"] is None
+
+
 def test_rejection_is_terminal_and_has_no_expiry(tmp_path: Path, fixture_root: Path) -> None:
     with TestClient(create_app(dependencies(tmp_path, fixture_root))) as client:
         action_id, _ = triage_high_action(client, fixture_root)

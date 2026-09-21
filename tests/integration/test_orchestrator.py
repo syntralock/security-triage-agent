@@ -1,18 +1,21 @@
 """Offline end-to-end tests for bounded triage orchestration."""
 
+import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from time import sleep
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from security_triage_agent.adapters.persistence.models import RecommendedActionRow
 from security_triage_agent.adapters.persistence.uow import (
     PersistenceError,
     SqlAlchemyUnitOfWork,
@@ -51,7 +54,7 @@ from security_triage_agent.application.ports.tools import (
 )
 from security_triage_agent.application.tool_gateway import GatewayLimits, ToolGateway
 from security_triage_agent.application.tool_registry import ToolRegistry
-from security_triage_agent.domain.actions import ActionProposal
+from security_triage_agent.domain.actions import ActionRecommendation
 from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.entities import UserEntityReference
 from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
@@ -122,7 +125,7 @@ def candidate(
     *,
     evidence_items: tuple[EvidenceReference, ...] = (),
     tool_calls: tuple[ToolCallReference, ...] = (),
-    actions: tuple[ActionProposal, ...] = (),
+    actions: tuple[ActionRecommendation, ...] = (),
 ) -> CandidateAssessment:
     return CandidateAssessment(
         disposition=Disposition.MALICIOUS,
@@ -148,6 +151,11 @@ def tools(dataset: FixtureDataset) -> list[Any]:
     ]
 
 
+def policy() -> DeterministicPolicy:
+    identifiers = SequenceIdentifierGenerator()
+    return DeterministicPolicy(initial_action_catalog(), lambda: identifiers.next_id("action"))
+
+
 def orchestrator(
     tmp_path: Path,
     dataset: FixtureDataset,
@@ -165,7 +173,7 @@ def orchestrator(
     service = TriageOrchestrator(
         reasoner=fake,
         gateway=gateway,
-        policy=DeterministicPolicy(initial_action_catalog()),
+        policy=policy(),
         uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
         clock=clock,
         identifiers=SequenceIdentifierGenerator(),
@@ -187,9 +195,8 @@ def run(service: TriageOrchestrator, source: SecurityAlert) -> OrchestrationOutc
 def test_happy_path_is_durable_and_reconstructable(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
-    remediation = ActionProposal.model_validate(
+    remediation = ActionRecommendation.model_validate(
         {
-            "action_id": "action-disable",
             "catalog_action_id": "disable_account",
             "target": {"entity_type": "USER", "identifier": "user-alex"},
             "parameters": {},
@@ -353,9 +360,8 @@ def test_total_and_per_tool_budget_exhaustion(
 def test_unknown_and_out_of_scope_actions_are_policy_controlled(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
-    unknown = ActionProposal.model_validate(
+    unknown = ActionRecommendation.model_validate(
         {
-            "action_id": "action-unknown",
             "catalog_action_id": "invented_action",
             "target": {"entity_type": "USER", "identifier": "user-riley"},
             "parameters": {},
@@ -376,10 +382,16 @@ def test_unknown_and_out_of_scope_actions_are_policy_controlled(
 def test_idempotent_replay_does_not_run_reasoner_twice(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
-    service, _, fake, source = orchestrator(
+    recommendation = ActionRecommendation(
+        catalog_action_id="disable_account",
+        target=UserEntityReference(identifier="user-alex"),
+        parameters={},
+        rationale="Synthetic idempotency recommendation.",
+    )
+    service, factory, fake, source = orchestrator(
         tmp_path,
         fixture_dataset,
-        [ReasonerCandidate(candidate=candidate())],
+        [ReasonerCandidate(candidate=candidate(actions=(recommendation,)))],
     )
     first = run(service, source)
     second = run(service, source)
@@ -387,6 +399,8 @@ def test_idempotent_replay_does_not_run_reasoner_twice(
     assert second.reason_code is OrchestrationReasonCode.IDEMPOTENT_REPLAY
     assert len(fake.contexts) == 1
     assert second.result == first.result
+    with factory() as session:
+        assert session.scalar(select(func.count()).select_from(RecommendedActionRow)) == 1
 
 
 def test_typed_not_found_is_accumulated_as_evidence(
@@ -467,7 +481,7 @@ def test_final_persistence_failure_never_claims_completion(
     service = TriageOrchestrator(
         reasoner=FakeReasoner([ReasonerCandidate(candidate=candidate())]),
         gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
-        policy=DeterministicPolicy(initial_action_catalog()),
+        policy=policy(),
         uow_factory=lambda: FailingFinalUnitOfWork(factory),
         clock=FixedClock(NOW),
         identifiers=SequenceIdentifierGenerator(),
@@ -487,10 +501,164 @@ def test_final_persistence_failure_never_claims_completion(
         events = uow.audit.list_for_target("triage_execution", execution.execution_id)
         assert events[-1].event_type == "triage.persistence_failed"
         assert events[-1].data == {
+            "exception_type": "PersistenceError",
             "failure_category": "FINALIZATION_FAILED",
             "stage": "commit",
         }
     assert "synthetic final failure" not in caplog.text
+
+
+def test_identical_action_recommendations_receive_distinct_canonical_ids(
+    tmp_path: Path, fixture_dataset: FixtureDataset
+) -> None:
+    factory = migrate(tmp_path / "action-identity.db")
+    remediation = ActionRecommendation.model_validate(
+        {
+            "catalog_action_id": "revoke_sessions",
+            "target": {"entity_type": "USER", "identifier": "user-riley"},
+            "parameters": {},
+            "rationale": "Provider-derived high-impact recommendation.",
+        }
+    )
+
+    def assessment(number: int) -> CandidateAssessment:
+        return CandidateAssessment(
+            disposition=Disposition.MALICIOUS,
+            severity=Severity.CRITICAL,
+            confidence=Decimal("0.999999999999999999"),
+            evidence=(
+                expected_evidence(f"call-{number}").model_copy(
+                    update={"evidence_id": f"evidence-{number:04d}"}
+                ),
+            ),
+            tool_calls=(expected_call(f"call-{number}"),),
+            reasoning_summary="Provider-derived evidence supports escalation.",
+            recommended_actions=(remediation,),
+            escalation_required=True,
+            escalation_reason="Privileged identity requires review.",
+        )
+
+    fake = FakeReasoner(
+        [
+            ReasonerToolCall(
+                call_id="call-1",
+                tool_name="get_user_risk",
+                arguments={"user_id": "user-riley"},
+            ),
+            ReasonerCandidate(candidate=assessment(1)),
+            ReasonerToolCall(
+                call_id="call-2",
+                tool_name="get_user_risk",
+                arguments={"user_id": "user-riley"},
+            ),
+            ReasonerCandidate(candidate=assessment(2)),
+        ]
+    )
+    service = TriageOrchestrator(
+        reasoner=fake,
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=8, per_tool_calls=2),
+    )
+    source = alert(include_riley=True)
+    outcomes = []
+    for number in (1, 2):
+        current = source.model_copy(
+            update={
+                "alert_id": f"alert-action-identity-{number}",
+                "original_payload": source.original_payload.model_copy(
+                    update={
+                        "reference_id": f"payload-action-identity-{number}",
+                        "payload_digest": f"sha256:{number}" + "0" * 63,
+                    }
+                ),
+            }
+        )
+        outcomes.append(
+            service.run(
+                current,
+                idempotency_key=f"idem-action-identity-{number}",
+                execution_id=f"execution-action-identity-{number}",
+                correlation_id=f"correlation-action-identity-{number}",
+            )
+        )
+
+    assert all(outcome.durable for outcome in outcomes)
+    assert all(outcome.result is not None for outcome in outcomes)
+    first_action = outcomes[0].result.recommended_actions[0]  # type: ignore[union-attr]
+    second_action = outcomes[1].result.recommended_actions[0]  # type: ignore[union-attr]
+    assert first_action.action_id != second_action.action_id
+    assert first_action.catalog_action_id == second_action.catalog_action_id == "revoke_sessions"
+    assert first_action.target == second_action.target == remediation.target
+    assert first_action.parameters == second_action.parameters == remediation.parameters
+    assert first_action.digest == second_action.digest
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        first = uow.executions.get("execution-action-identity-1")
+        second = uow.executions.get("execution-action-identity-2")
+        assert first is not None and first.state is TriageExecutionState.COMPLETED
+        assert second is not None and second.state is TriageExecutionState.COMPLETED
+        assert uow.triage_results.get_for_execution(first.execution_id) is not None
+        assert uow.triage_results.get_for_execution(second.execution_id) is not None
+        assert uow.actions.get(first_action.action_id) == first_action
+        assert uow.actions.get(second_action.action_id) == second_action
+
+
+def test_recovery_failure_is_safely_observable(
+    tmp_path: Path, fixture_dataset: FixtureDataset, caplog: pytest.LogCaptureFixture
+) -> None:
+    factory = migrate(tmp_path / "recovery-failure.db")
+    logger = logging.getLogger("security_triage_agent.application.orchestrator")
+    logger.disabled = False
+    logger.addHandler(caplog.handler)
+    caplog.set_level("ERROR", logger=logger.name)
+
+    class FailingFinalAndRecoveryUnitOfWork(SqlAlchemyUnitOfWork):
+        commits = 0
+
+        def commit(self) -> None:
+            type(self).commits += 1
+            if type(self).commits >= 2:
+                raise PersistenceError("synthetic transaction failure")
+            super().commit()
+
+    service = TriageOrchestrator(
+        reasoner=FakeReasoner([ReasonerCandidate(candidate=candidate())]),
+        gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
+        policy=policy(),
+        uow_factory=lambda: FailingFinalAndRecoveryUnitOfWork(factory),
+        clock=FixedClock(NOW),
+        identifiers=SequenceIdentifierGenerator(),
+        orchestration_limits=OrchestrationLimits(),
+        gateway_limits=GatewayLimits(total_calls=2, per_tool_calls=1),
+    )
+    with caplog.at_level("ERROR"):
+        outcome = run(service, alert())
+    logger.removeHandler(caplog.handler)
+
+    assert not outcome.durable
+    recovery_record = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "triage.persistence_failure_record_failed"
+    )
+    assert cast(Any, recovery_record).context == {
+        "execution_id": "execution-orchestration",
+        "correlation_id": "correlation-orchestration",
+        "failure_category": "RECOVERY_FAILED",
+        "recovery_stage": "commit",
+        "exception_type": "PersistenceError",
+    }
+    with SqlAlchemyUnitOfWork(factory) as uow:
+        execution = uow.executions.get("execution-orchestration")
+        assert execution is not None and execution.state is TriageExecutionState.RUNNING
+        assert uow.triage_results.get_for_execution(execution.execution_id) is None
+        assert not uow.audit.list_for_target("triage_execution", execution.execution_id)[
+            -1
+        ].event_type.endswith("persistence_failed")
 
 
 class FailureTool:
@@ -535,7 +703,7 @@ def test_adapter_failure_and_invalid_result_become_review(
             ]
         ),
         gateway=gateway,
-        policy=DeterministicPolicy(initial_action_catalog()),
+        policy=policy(),
         uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
         clock=FixedClock(NOW),
         identifiers=SequenceIdentifierGenerator(),
@@ -565,7 +733,7 @@ def test_gateway_timeout_becomes_review(tmp_path: Path) -> None:
             ]
         ),
         gateway=gateway,
-        policy=DeterministicPolicy(initial_action_catalog()),
+        policy=policy(),
         uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
         clock=FixedClock(NOW),
         identifiers=SequenceIdentifierGenerator(),
@@ -587,7 +755,7 @@ def test_slow_reasoner_is_bounded_by_deadline(
     service = TriageOrchestrator(
         reasoner=SlowReasoner(),
         gateway=ToolGateway(ToolRegistry(tools(fixture_dataset)), now=lambda: NOW),
-        policy=DeterministicPolicy(initial_action_catalog()),
+        policy=policy(),
         uow_factory=lambda: SqlAlchemyUnitOfWork(factory),
         clock=FixedClock(NOW),
         identifiers=SequenceIdentifierGenerator(),

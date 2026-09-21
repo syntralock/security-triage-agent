@@ -52,6 +52,7 @@ from security_triage_agent.logging import log_event
 
 UnitOfWorkFactory = Callable[[], UnitOfWork]
 FINALIZATION_FAILURE = "FINALIZATION_FAILED"
+RECOVERY_FAILURE = "RECOVERY_FAILED"
 
 
 class TriageOrchestrator:
@@ -361,17 +362,28 @@ class TriageOrchestrator:
                 stage=stage,
                 exception_type=self._root_exception_type(exc),
             )
-            self._record_terminal_persistence_failure(execution_id, correlation_id, stage)
+            self._record_terminal_persistence_failure(
+                execution_id,
+                correlation_id,
+                stage,
+                self._root_exception_type(exc),
+            )
             return False
 
     def _record_terminal_persistence_failure(
-        self, execution_id: str, correlation_id: str, stage: str
+        self,
+        execution_id: str,
+        correlation_id: str,
+        finalization_stage: str,
+        finalization_exception_type: str,
     ) -> None:
+        recovery_stage = "load_execution"
         try:
             with self._uow_factory() as uow:
                 existing = uow.executions.get(execution_id)
                 if existing is None or existing.state is not TriageExecutionState.RUNNING:
                     return
+                recovery_stage = "transition_execution"
                 uow.executions.replace(
                     existing.model_copy(
                         update={
@@ -381,15 +393,21 @@ class TriageOrchestrator:
                         }
                     )
                 )
+                recovery_stage = "append_audit"
                 uow.audit.append(
                     self._audit(
                         "triage.persistence_failed",
                         execution_id,
                         correlation_id,
-                        {"failure_category": FINALIZATION_FAILURE, "stage": stage},
+                        {
+                            "failure_category": FINALIZATION_FAILURE,
+                            "stage": finalization_stage,
+                            "exception_type": finalization_exception_type,
+                        },
                         outcome=AuditOutcome.FAILED,
                     )
                 )
+                recovery_stage = "commit"
                 uow.commit()
         except Exception as exc:
             log_event(
@@ -398,7 +416,8 @@ class TriageOrchestrator:
                 "triage.persistence_failure_record_failed",
                 execution_id=execution_id,
                 correlation_id=correlation_id,
-                failure_category=FINALIZATION_FAILURE,
+                failure_category=RECOVERY_FAILURE,
+                recovery_stage=recovery_stage,
                 exception_type=self._root_exception_type(exc),
             )
 

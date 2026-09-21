@@ -172,7 +172,7 @@ The minimum-evidence rule is deliberately conservative and simple: `BENIGN`, `SU
 
 ### Action catalog, approval, and execution
 
-Recommendations use stable action identifiers, typed target/parameters, and human-readable rationale. A central catalog assigns each action a risk level and approval requirement. The six named high-impact actions are always approval-required.
+Reasoner recommendations contain semantic action data only: catalog action type, target, allowed parameters, and rationale. They do not contain a canonical action identifier. Deterministic policy validates catalog membership, target scope, and parameter schema before creating a canonical `ActionProposal` with an application-generated globally unique identifier. Identical recommendations in separate executions therefore remain separate approval-bound records, while idempotent replay returns the already-persisted result without generating another action. A central catalog assigns each action a risk level and approval requirement. The six named high-impact actions are always approval-required.
 
 The immutable initial catalog registers `disable_account`, `revoke_sessions`, `reset_password`, `isolate_device`, `delete_email`, and `remove_privilege`, all at risk `HIGH_IMPACT`, version `1.0.0`, approval-required, and `SIMULATED_ONLY`. Account/session/password/email/privilege actions target a scoped user; device isolation targets a scoped device. Email deletion requires a message identifier and privilege removal requires a privilege identifier; the other initial actions accept no parameters. Candidate text or extra metadata cannot register actions or alter these definitions.
 
@@ -241,7 +241,7 @@ Do not request or store private chain-of-thought. The reasoning summary should c
 - Confidence is represented as `Decimal`, preserving supplied precision across domain serialization round trips.
 - Alert scope uses discriminated user, device, and IP-address references. IP addresses are normalized by value.
 - Evidence may originate from a tool or another source such as the source alert. Tool-origin evidence must reference a tool call included in the same triage result.
-- Action parameters are structured JSON values and are deep-frozen after validation. The action digest is SHA-256 over canonical JSON containing the catalog action identifier, normalized target, and parameters. Action ID and reviewer-facing rationale are intentionally outside the digest; approvals bind both the stable action ID and digest.
+- Action parameters are structured JSON values and are deep-frozen after validation. The action digest is SHA-256 over canonical JSON containing the catalog action identifier, normalized target, and parameters. Canonical action ID and reviewer-facing rationale are intentionally outside the digest; approvals independently bind the application-generated action ID, material digest, and policy version.
 - `actions_requiring_approval` contains typed action ID/digest references and may only reference matching recommended actions. Policy—not an action proposal—will decide which actions require approval in Milestone 6.
 - Lifecycle transition methods return new immutable state objects and reject transitions not listed in the approved state maps.
 - Approved decisions require a future expiry and may later transition to `EXPIRED`. Rejected decisions have no expiry while preserving the reviewer, decision time, reason, policy version, and action binding as immutable historical facts.

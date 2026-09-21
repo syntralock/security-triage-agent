@@ -459,7 +459,6 @@ def test_typed_action_parameters_map_to_domain(fixture_dataset: Any) -> None:
                     "reasoning_summary": "Synthetic recommendation.",
                     "recommended_actions": [
                         {
-                            "action_id": "action-1",
                             "catalog_action_id": "disable_account",
                             "target": user.model_dump(mode="json"),
                             "parameters": {},
@@ -477,3 +476,40 @@ def test_typed_action_parameters_map_to_domain(fixture_dataset: Any) -> None:
     assert isinstance(step, ReasonerCandidate)
     assert step.candidate.recommended_actions[0].catalog_action_id == "disable_account"
     assert dict(step.candidate.recommended_actions[0].parameters) == {}
+
+
+def test_provider_action_identifier_is_rejected_as_non_semantic_output(
+    fixture_dataset: Any,
+) -> None:
+    alert = fixture_dataset.alerts[0]
+    user = next(entity for entity in alert.entities if entity.entity_type == "USER")
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "CANDIDATE",
+                "candidate": {
+                    "disposition": "MALICIOUS",
+                    "severity": "HIGH",
+                    "confidence": 0.9,
+                    "evidence_reference_ids": [],
+                    "reasoning_summary": "Synthetic recommendation.",
+                    "recommended_actions": [
+                        {
+                            "action_id": "chosen-by-provider",
+                            "catalog_action_id": "disable_account",
+                            "target": user.model_dump(mode="json"),
+                            "parameters": {},
+                            "rationale": "Contain the synthetic identity.",
+                        }
+                    ],
+                    "escalation_required": True,
+                    "escalation_reason": "High-impact recommendation.",
+                    "tool_call_reference_ids": [],
+                },
+            }
+        }
+    )
+
+    with pytest.raises(OpenAIReasonerError) as captured:
+        reasoner(responses).next_step(context(alert))
+    assert captured.value.category is ProviderFailureCategory.VALIDATION

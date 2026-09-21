@@ -1,5 +1,6 @@
 """Migration, repository, transaction, and durable audit integration tests."""
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from security_triage_agent.adapters.persistence.models import AuditEventRow
@@ -17,6 +19,7 @@ from security_triage_agent.adapters.persistence.uow import (
     create_engine,
 )
 from security_triage_agent.application.action_catalog import initial_action_catalog
+from security_triage_agent.application.orchestration_contracts import SequenceIdentifierGenerator
 from security_triage_agent.application.persistence import (
     ActionExecutionRecord,
     AuditEvent,
@@ -29,7 +32,12 @@ from security_triage_agent.application.policy import (
     DeterministicPolicy,
 )
 from security_triage_agent.application.tool_gateway import ToolInvocationRecord
-from security_triage_agent.domain.actions import ActionProposal, ActionReference, ActionState
+from security_triage_agent.domain.actions import (
+    ActionProposal,
+    ActionRecommendation,
+    ActionReference,
+    ActionState,
+)
 from security_triage_agent.domain.alerts import SecurityAlert
 from security_triage_agent.domain.approvals import ApprovalRecord
 from security_triage_agent.domain.evidence import EvidenceReference, ToolCallReference
@@ -240,6 +248,24 @@ def test_invalid_approval_cannot_be_constructed() -> None:
         )
 
 
+def test_reused_action_identifier_exposes_sanitized_constraint_failure(
+    uow_factory: sessionmaker[Session],
+) -> None:
+    with SqlAlchemyUnitOfWork(uow_factory) as uow:
+        seed(uow)
+        uow.commit()
+
+    duplicate = action().model_copy(update={"rationale": "Second execution reused the identifier."})
+    with pytest.raises(PersistenceError) as captured, SqlAlchemyUnitOfWork(uow_factory) as uow:
+        uow.actions.add("execution-001", duplicate)
+        uow.flush()
+
+    sqlalchemy_error = captured.value.__cause__
+    assert isinstance(sqlalchemy_error, IntegrityError)
+    assert isinstance(sqlalchemy_error.orig, sqlite3.IntegrityError)
+    assert str(captured.value) == "persistence transaction failed"
+
+
 def test_tool_and_action_execution_round_trip(uow_factory: sessionmaker[Session]) -> None:
     invocation = ToolInvocationRecord.model_validate(
         {
@@ -361,9 +387,8 @@ def test_unsupported_database_backend_is_sanitized() -> None:
 def test_policy_result_and_approval_binding_survive_round_trip(
     uow_factory: sessionmaker[Session],
 ) -> None:
-    proposed = ActionProposal.model_validate(
+    proposed = ActionRecommendation.model_validate(
         {
-            "action_id": "action-disable-account",
             "catalog_action_id": "disable_account",
             "target": {"entity_type": "USER", "identifier": "user-alex"},
             "parameters": {},
@@ -387,16 +412,18 @@ def test_policy_result_and_approval_binding_survive_round_trip(
         reasoning_summary="Synthetic policy candidate.",
         recommended_actions=(proposed,),
     )
-    policy = DeterministicPolicy(initial_action_catalog())
+    identifiers = SequenceIdentifierGenerator()
+    policy = DeterministicPolicy(initial_action_catalog(), lambda: identifiers.next_id("action"))
     decision = policy.evaluate(
         candidate,
         alert_id="alert-001",
         action_scope=AuthorizedActionScope(keys=frozenset({"USER:user-alex"})),
         timestamp=NOW,
     )
+    canonical = decision.result.recommended_actions[0]
     approval = ApprovalRecord(
         approval_id="approval-policy",
-        action_id=proposed.action_id,
+        action_id=canonical.action_id,
         action_digest=decision.result.actions_requiring_approval[0].action_digest,
         reviewer_id="reviewer-001",
         decision="APPROVED",
@@ -410,7 +437,7 @@ def test_policy_result_and_approval_binding_survive_round_trip(
         uow.flush()
         uow.executions.add(execution())
         uow.flush()
-        uow.actions.add("execution-001", proposed)
+        uow.actions.add("execution-001", canonical)
         uow.flush()
         uow.triage_results.add("result-policy", "execution-001", decision.result)
         uow.approvals.add(approval)

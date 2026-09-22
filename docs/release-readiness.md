@@ -19,8 +19,9 @@ Third-party license metadata is inventoried separately.
 
 Remaining local/demo decisions:
 
-- **HUMAN DECISION REQUIRED:** approve the proprietary public-distribution posture and resolve the
-  license-review flags in `docs/third-party-licenses.md`.
+- **HUMAN DECISION REQUIRED:** approve the proprietary public-distribution posture and the
+  `THIRD_PARTY_NOTICES`/MPL license-and-source preservation plan documented in
+  `docs/third-party-licenses.md`, particularly before distributing a Docker image.
 - **HUMAN DECISION REQUIRED:** approve the release commit, artifact distribution channel, and
   creation of the `v1.0.0-demo` tag.
 - A formal assistive-technology audit has not been performed.

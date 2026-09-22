@@ -13,7 +13,8 @@ unreviewed tree.
 - [ ] Current-tree and full-history secret scans pass; `.env.local` was never tracked.
 - [ ] Bandit and dependency consistency pass.
 - [ ] Every GitHub Action uses a reviewed full commit SHA; workflow permissions remain read-only.
-- [ ] Third-party license inventory and all **HUMAN DECISION REQUIRED** items are reviewed.
+- [ ] Third-party license inventory, `THIRD_PARTY_NOTICES`, bundled license/source preservation,
+  and all **HUMAN DECISION REQUIRED** items are reviewed.
 
 ## Build and database
 

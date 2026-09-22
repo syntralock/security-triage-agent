@@ -74,7 +74,7 @@ class AppDependencies:
 
 
 def create_app(dependencies: AppDependencies) -> FastAPI:
-    app = FastAPI(title="Security Triage Agent", version="0.1.0")
+    app = FastAPI(title="Security Triage Agent", version="1.0.0")
     templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
     app.state.dependencies = dependencies
     csrf = CsrfProtector()

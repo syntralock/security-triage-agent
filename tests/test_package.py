@@ -5,7 +5,7 @@ from security_triage_agent.__main__ import main
 
 
 def test_package_version() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "1.0.0"
 
 
 def test_foundation_check_starts_without_credentials() -> None:

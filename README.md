@@ -1,6 +1,6 @@
 # Security Triage Agent
 
-A portfolio demonstration intended for a future open-source release of a bounded, auditable Level 1 security alert triage agent. The project is designed for synthetic Microsoft Sentinel-, Defender-, and Entra-style alerts and keeps deterministic policy, authorization, approval, and action execution outside AI reasoning.
+A proprietary portfolio demonstration of a bounded, auditable Level 1 security alert triage agent. The project is designed for synthetic Microsoft Sentinel-, Defender-, and Entra-style alerts and keeps deterministic policy, authorization, approval, and action execution outside AI reasoning.
 
 ## Project status
 
@@ -28,6 +28,9 @@ The configured principal is the fixed synthetic `development-reviewer`. It is se
 - [M12A hardening review](docs/hardening-review.md)
 - [Security invariants](docs/security-invariants.md)
 - [Secret management](docs/secret-management.md)
+- [Third-party license inventory](docs/third-party-licenses.md)
+- [Dependency locking](docs/dependency-locking.md)
+- [v1.0.0-demo release checklist](docs/release-checklist.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Evaluation framework](docs/evaluation.md)
 - [Engineering and security rules](AGENTS.md)
@@ -47,13 +50,23 @@ The configured principal is the fixed synthetic `development-reviewer`. It is se
 
 ## Development setup
 
-Create and activate a Python 3.12 virtual environment, then install the package and development tools:
+Create and activate a normal Python 3.12 virtual environment. For a reproducible development
+environment, install the exact development lock and then the local package without resolving it:
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
-make install
+make install-locked
+```
+
+For compatibility-range development instead, `make install` installs editable `.[dev]`. That may
+resolve newer versions and is not the release-reproduction path. Regenerate both locks only as an
+intentional dependency update with `bash scripts/regenerate_locks.sh`, then review dependency and
+license diffs. A runtime-only locked install uses:
+
+```bash
+python -m pip install -r requirements.lock
+python -m pip install --no-deps .
 ```
 
 Local settings use `STA_`-prefixed environment variables. Defaults are safe for development; copy `.env.example` to the explicitly ignored `.env.local` only when overrides are needed, and restrict it to the local user (`chmod 600 .env.local`):
@@ -93,6 +106,17 @@ Build and run the hardened baseline container:
 ```bash
 make container-smoke
 ```
+
+Run the clean-install release smoke test with Python 3.12:
+
+```bash
+make release-smoke
+```
+
+It creates a temporary environment and SQLite database, installs locked runtime dependencies and
+a non-editable wheel, checks both console entry points, applies the packaged migrations, starts
+FastAPI in deterministic demo mode, and verifies `/health`, `/ready`, and the dashboard. It removes
+the temporary server and files on exit and never makes an OpenAI request.
 
 The test and check workflow is offline after dependencies are installed and does not require paid API access.
 
@@ -234,4 +258,16 @@ Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 ## License
 
-No license has been selected yet. Licensing will be decided during the Milestone 12 public-release review. Until then, no license grant should be inferred from the repository's availability.
+This repository is **proprietary / all rights reserved**. Repository availability grants no
+permission to copy, modify, distribute, sublicense, or use the source except as expressly
+authorized by the owner. Third-party dependencies retain their own licenses; see [NOTICE](NOTICE)
+and the [third-party inventory](docs/third-party-licenses.md). A future licensing decision may
+replace this posture only through an explicit reviewed change.
+
+The local/demo release name and intended Git tag are `v1.0.0-demo`; the Python package version is
+the PEP 440 version `1.0.0`. No tag or release is created by the verification tooling.
+
+During M12C validation, a virtual environment created against a Codex-managed cached Python
+runtime failed to process editable-install metadata normally. The package was independently
+validated in a fresh standard Python 3.12.10 environment. The release smoke test above exists to
+verify clean installation independently of development-runtime state.

@@ -1,9 +1,13 @@
 PYTHON ?= python3
 
-.PHONY: install format format-check lint typecheck test migrations fixtures evaluations dependencies security check container-smoke
+.PHONY: install install-locked format format-check lint typecheck test migrations fixtures evaluations dependencies security check release-smoke container-smoke
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
+
+install-locked:
+	$(PYTHON) -m pip install -r requirements-dev.lock
+	$(PYTHON) -m pip install --no-deps -e .
 
 format:
 	$(PYTHON) -m ruff format src tests scripts migrations
@@ -37,6 +41,9 @@ security:
 	$(PYTHON) -m detect_secrets.pre_commit_hook --baseline .secrets.baseline $$(git ls-files --cached --others --exclude-standard)
 
 check: format-check lint typecheck test migrations fixtures evaluations dependencies security
+
+release-smoke:
+	bash scripts/release_smoke.sh
 
 container-smoke:
 	docker compose build app

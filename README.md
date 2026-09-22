@@ -4,7 +4,7 @@ A portfolio demonstration intended for a future open-source release of a bounded
 
 ## Project status
 
-Milestones 0–11 are complete through the optional OpenAI reasoner adapter. The safe default remains the deterministic demo reasoner. Both paths use synthetic fixture tools, deterministic policy, immutable approval facts, simulated actions, durable audit records, and versioned scenario scoring. Production authentication and real remediation have not been implemented.
+Milestones 0–11, M12A hardening, and M12B experimental reasoning work are complete. M12C provides a coherent local analyst workflow for portfolio review. The safe default remains the deterministic demo reasoner. Both reasoner paths use synthetic fixture tools, deterministic policy, immutable approval facts, simulated actions, durable audit records, and versioned scenario scoring. Production authentication, tenant isolation, and real remediation have not been implemented.
 
 For local SQLite persistence, set `STA_DATABASE_URL` if the default is unsuitable and apply the schema with:
 
@@ -114,7 +114,11 @@ The JSON API is intentionally small:
 - `POST /api/alerts/{alert_id}/triage`
 - `GET /api/executions/{execution_id}` plus `/tools` and `/audit`
 
-Review pages are available at `/`, `/alerts/{alert_id}`, `/executions/{execution_id}`, and `/actions/{action_id}`. Only the action page has state-changing forms, and those forms require a reviewer-authorized principal plus a session-bound CSRF token.
+The local analyst workflow is:
+
+> Alert queue → source alert → triage → investigation → deterministic policy → assessment → evidence review → action recommendation → human decision → simulated execution → audit history
+
+Review pages are available at `/`, `/alerts/{alert_id}`, `/executions/{execution_id}`, and `/actions/{action_id}`. The alert page can start triage for an analyst-authorized principal. Action pages support approval, rejection, and authorized simulation. Every browser mutation requires server-side authorization and a session-bound CSRF token.
 
 With the server running, ingest a bundled synthetic alert and run triage:
 
@@ -133,7 +137,23 @@ curl -X POST -H 'Content-Type: application/json' \
   http://127.0.0.1:8000/api/alerts/alert-riley-risk/triage
 ```
 
-Open the returned execution URL and follow its action link. Alert, evidence, rationale, reviewer reason, and audit text are untrusted and autoescaped. Errors use sanitized `{code, message}` objects.
+Open <http://127.0.0.1:8000/>. The dashboard is derived from persisted state; select the alert, review the source/assessed severity distinction, and use the action link to inspect the exact approval binding. Approve or reject with a reason. An approved action can enter only the simulator, and its outcome and actor appear in the audit timeline. Alert, evidence, rationale, reviewer reason, and audit text are untrusted and autoescaped. Errors use sanitized `{code, message}` objects.
+
+### Recommended repeatable demo
+
+Use the default deterministic reasoner so the presentation requires no network or API key:
+
+1. Apply migrations and start the server as shown above.
+2. Ingest fixture alert index `0` to show the benign-resolved source narrative; the deliberately
+   conservative demo reasoner still returns an advisory review result rather than auto-closing it.
+3. Ingest fixture alert index `1` (`alert-riley-risk`) to show a high-impact investigation and approval-gated recommendation.
+4. Start triage from the alert detail page and inspect the evidence chronology, deterministic policy, assessment, and audit timeline.
+5. Open the recommended action. Verify the trusted risk, exact target/parameters, digest, policy version, and `SIMULATED_ONLY` support.
+6. Record a rejection to demonstrate a terminal human decision, or use a fresh triage execution and approve the exact action.
+7. Run the approved simulation and inspect its durable `SIMULATED_SUCCESS` record and action timeline.
+8. Run `python -m security_triage_agent.evaluation --scenario typed-not-found-evidence` separately to demonstrate deterministic `NEEDS_REVIEW` behavior without changing the product database.
+
+The fixture/evaluation harness contains overlapping contract scenarios rather than a curated product seed system. No second demo-data source has been added.
 
 The demo reasoner has no model, prompt, network, or OpenAI dependency. It requests only the allowlisted synthetic user-risk tool, always escalates for review, and may propose a cataloged approval-gated action for high-severity demo alerts.
 
@@ -153,12 +173,20 @@ STA_OPENAI_PROMPT_VERSION=openai-l1-v1
 ```
 
 The default `openai-l1-v1` contract remains frozen for baseline reproducibility. Trusted local
-configuration may instead select the experimental `openai-l1-v2` contract. Request data cannot
-select a prompt. V2 adds explicit evidence, disposition, severity, escalation, confidence, and
-minimal-action semantics; an alert-derived tool-target scope; and catalog-derived action guidance.
-It also removes artificial benchmark cues from the provider-facing presentation without changing
-the stored synthetic alert or evidence. V2 has not yet been live-benchmarked, and selecting it does
-not alter gateway, policy, approval, or execution authority.
+configuration may instead select `openai-l1-v2`, which remains **experimental and advisory** and
+is not approved as a default. Request data cannot select a prompt. M12B found useful scope,
+anti-leakage, and stopping improvements, but also inconsistent BENIGN/NEEDS_REVIEW semantics and
+deadline behavior. Selecting V2 never changes gateway, policy, approval, or execution authority.
+See [the controlled M12B experiment record](docs/evaluations/m12b-terra-v1-v2-experiment.md).
+
+No reasoner output closes or suppresses an alert. BENIGN remains advisory; SUSPICIOUS does not
+trigger an external escalation; MALICIOUS does not authorize containment; and NEEDS_REVIEW
+requires analyst attention. Model confidence is uncalibrated advisory metadata.
+
+## Screenshots
+
+Screenshots may be added during public-release packaging after the UI and release wording are
+approved. Do not use screenshots containing real alerts, identities, infrastructure, or secrets.
 
 The default provider is `demo`. Enabling `openai` without a key fails closed; there is no silent fallback. SDK retries are disabled, requests set `store=False`, output is bounded, and provider errors become sanitized reasoner failures that orchestration durably resolves to `NEEDS_REVIEW` when possible.
 

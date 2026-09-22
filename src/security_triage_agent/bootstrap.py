@@ -128,6 +128,16 @@ def build_dependencies(settings: Settings) -> AppDependencies:
         recovery_service=recovery_service,
         clock=clock,
         max_request_bytes=settings.max_request_bytes,
+        reasoner_mode=(
+            f"OpenAI · {settings.openai_model}"
+            if settings.reasoner_provider is ReasonerProvider.OPENAI
+            else "Deterministic demo"
+        ),
+        prompt_version=(
+            settings.openai_prompt_version
+            if settings.reasoner_provider is ReasonerProvider.OPENAI
+            else "demo-v1"
+        ),
     )
 
 

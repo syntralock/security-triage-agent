@@ -1,29 +1,29 @@
 {% extends "base.html" %}
-{% block title %}{{ action.action_id }} · Security Triage Agent{% endblock %}
+{% block title %}Action review · Security Triage Agent{% endblock %}
 {% block content %}
-<h2>Recommended action <code>{{ action.action_id }}</code></h2>
-<p class="notice"><strong>SIMULATED ONLY.</strong> No real remediation will occur.</p>
-<dl>
-  <dt>Action</dt><dd>{{ action.catalog_action_id }}</dd>
-  <dt>Target</dt><dd>{{ action.target.entity_type }} / {{ action.target.identifier }}</dd>
+<div class="page-heading"><div><p class="eyebrow">Human authorization boundary</p><h2>Recommended action</h2></div><a href="/executions/{{ triage_execution_id }}">← Investigation</a></div>
+<p><span class="badge badge-{{ workflow_state }}">{{ workflow_state }}</span> <code>{{ action.action_id }}</code></p>
+<p class="notice"><strong>SIMULATED ONLY.</strong> Approval permits only the exact persisted action material below to enter the local simulator. It does not authorize a real provider change.</p>
+<div class="grid two-column"><section class="card"><h3>Exact action material</h3><dl>
+  <dt>Action type</dt><dd><strong>{{ action.catalog_action_id }}</strong><br>{{ description }}</dd>
+  <dt>Security objective</dt><dd>{{ objective }}</dd><dt>Category</dt><dd>{{ category }}</dd>
+  <dt>Target</dt><dd>{{ action.target.entity_type }} · <code>{{ action.target.identifier }}</code></dd>
   <dt>Parameters</dt><dd><pre>{{ action.parameters | tojson(indent=2) }}</pre></dd>
-  <dt>Risk</dt><dd><strong>{{ risk }}</strong></dd>
-  <dt>Approval required</dt><dd>{{ approval_required }}</dd>
-  <dt>Policy version</dt><dd>{{ policy_version }}</dd>
-  <dt>Action digest</dt><dd><code>{{ action_digest }}</code></dd>
-  <dt>Approval state</dt><dd><strong>{{ approval_state }}</strong></dd>
-  <dt>Execution support</dt><dd>{{ execution_support }}</dd>
-</dl>
-{% if approval %}<section><h3>Durable reviewer decision</h3><p>{{ approval.decision }} by {{ approval.reviewer_id }} at {{ approval.decided_at }}</p><p>{{ approval.reason }}</p>{% if approval.expires_at %}<p>Authorization expires: {{ approval.expires_at }}</p>{% endif %}</section>{% endif %}
-{% if reviewer_authorized and approval_state == "PENDING" %}
-<section><h3>Human review</h3>
-<form method="post" action="/actions/{{ action.action_id }}/approve"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reason <input name="reason" required></label><button type="submit">Approve exact action for simulation</button></form>
-<form method="post" action="/actions/{{ action.action_id }}/reject"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Reason <input name="reason" required></label><button type="submit">Reject action</button></form>
-</section>
-{% endif %}
-{% if reviewer_authorized and approval_state == "APPROVED" and not execution %}
-<form method="post" action="/actions/{{ action.action_id }}/execute"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Run simulation only</button></form>
-{% endif %}
-{% if execution %}<section><h3>Simulation record</h3><pre>{{ execution | tojson(indent=2) }}</pre><p>This record describes a simulation, not real remediation.</p></section>{% endif %}
-<section><h3>Action audit timeline</h3><ol>{% for item in audit %}<li>{{ item.occurred_at }} — {{ item.event_type }} — {{ item.outcome }}<pre>{{ item.data | tojson }}</pre></li>{% else %}<li>No action workflow events.</li>{% endfor %}</ol></section>
+  <dt>Rationale</dt><dd>{{ action.rationale }}</dd>
+</dl></section><section class="card"><h3>Authoritative controls</h3><dl>
+  <dt>Risk classification</dt><dd><span class="badge badge-HIGH">{{ risk }}</span></dd>
+  <dt>Approval requirement</dt><dd>{% if approval_required %}<strong>Human approval required</strong>{% else %}Not required{% endif %}</dd>
+  <dt>Execution support</dt><dd><strong>{{ execution_support }}</strong></dd><dt>Policy version</dt><dd>{{ policy_version }}</dd>
+  <dt>Material digest</dt><dd><code>{{ action_digest }}</code></dd><dt>Approval state</dt><dd><span class="badge badge-{{ approval_state }}">{{ approval_state }}</span></dd>
+</dl><p class="muted">Target, parameters, risk, policy version, and approval requirement cannot be edited here. Any material change invalidates approval.</p></section></div>
+{% if approval %}<section class="card"><h3>Durable reviewer decision</h3><dl><dt>Decision</dt><dd><span class="badge badge-{{ approval.decision }}">{{ approval.decision }}</span></dd><dt>Reviewer</dt><dd>{{ approval.reviewer_id }}</dd><dt>Decided</dt><dd>{{ approval.decided_at }}</dd><dt>Reason</dt><dd>{{ approval.reason }}</dd><dt>Bound digest</dt><dd><code>{{ approval.action_digest }}</code></dd>{% if approval.expires_at %}<dt>Authorization expires</dt><dd>{{ approval.expires_at }}</dd>{% endif %}</dl></section>{% endif %}
+{% if reviewer_authorized and approval_state == "PENDING" %}<section class="card"><h3>Record human decision</h3><div class="grid two-column">
+  <form method="post" action="/actions/{{ action.action_id }}/approve"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Approval reason<textarea name="reason" maxlength="2000" required></textarea></label><p><button type="submit">Approve exact action for simulation</button></p></form>
+  <form method="post" action="/actions/{{ action.action_id }}/reject"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Rejection reason<textarea name="reason" maxlength="2000" required></textarea></label><p><button class="danger" type="submit">Reject recommendation</button></p></form>
+</div></section>{% elif not reviewer_authorized and approval_state == "PENDING" %}<p class="notice">Your role may inspect this recommendation but cannot approve, reject, or execute it.</p>{% endif %}
+{% if reviewer_authorized and approval_state == "APPROVED" and not execution %}<section class="card"><h3>Authorized simulation</h3><p>Approval is valid for this exact action. Execution remains local and simulated.</p><form method="post" action="/actions/{{ action.action_id }}/execute"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Run simulation only</button></form></section>{% endif %}
+{% if approval_state == "EXPIRED" %}<p class="notice">This approval expired. The action cannot execute under the expired authorization.</p>{% endif %}
+{% if approval_state == "REJECTED" %}<p class="notice">This recommendation was rejected and cannot execute.</p>{% endif %}
+{% if execution %}<section class="card"><h3>Simulation record</h3><dl><dt>State</dt><dd><span class="badge badge-{{ workflow_state }}">{{ execution.state }}</span></dd><dt>Mode</dt><dd><strong>{{ execution.mode }}</strong></dd><dt>Outcome</dt><dd>{{ execution.outcome or 'Unavailable' }}</dd><dt>Started</dt><dd>{{ execution.started_at }}</dd><dt>Completed</dt><dd>{{ execution.completed_at or 'Not completed' }}</dd><dt>Actor</dt><dd>{{ simulation_actor or 'Recorded in audit history' }}</dd>{% if execution.failure_category %}<dt>Safe failure</dt><dd>{{ execution.failure_category }}</dd>{% endif %}</dl><p>This record describes a simulation. No Microsoft or other provider resource was changed.</p></section>{% endif %}
+<section><h3>Action audit timeline</h3><ol class="timeline">{% for item in audit_timeline %}<li><time>{{ item.occurred_at }}</time><p><strong>{{ item.label }}</strong>{% if item.outcome %} · {{ item.outcome }}{% endif %}</p>{% if item.actor_id %}<p class="muted">Actor: {{ item.actor_id }}</p>{% endif %}{% if item.details %}<p class="muted">{% for key, value in item.details.items() %}{{ key | replace('_', ' ') }}: {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}{% if item.failure_category %}<p>Safe failure: {{ item.failure_category }}</p>{% endif %}</li>{% else %}<li>No action workflow events.</li>{% endfor %}</ol></section>
 {% endblock %}

@@ -1,16 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Alerts · Security Triage Agent{% endblock %}
+{% block title %}Alert queue · Security Triage Agent{% endblock %}
 {% block content %}
-<h2>Alerts</h2>
-<table>
-  <thead><tr><th>Alert</th><th>Source severity</th><th>Detected</th><th>Source</th></tr></thead>
-  <tbody>
-  {% for alert in alerts %}
-    <tr>
-      <td><a href="/alerts/{{ alert.alert_id }}">{{ alert.title }}</a><br><code>{{ alert.alert_id }}</code></td>
-      <td>{{ alert.source_severity.value }}</td><td>{{ alert.detected_at }}</td><td>{{ alert.source }}</td>
-    </tr>
-  {% else %}<tr><td colspan="4">No alerts ingested.</td></tr>{% endfor %}
-  </tbody>
-</table>
+<div class="page-heading">
+  <div><p class="eyebrow">Operations</p><h2>Alert queue</h2></div>
+  <p class="muted">Normalized synthetic alerts and their latest persisted assessment.</p>
+</div>
+<section class="grid metrics" aria-label="Alert queue summary">
+  <div class="card metric"><strong>{{ counts.total }}</strong><span>Total alerts</span></div>
+  <div class="card metric"><strong>{{ counts.untriaged }}</strong><span>Pending / untriaged</span></div>
+  <div class="card metric"><strong>{{ counts.needs_review }}</strong><span>Needs analyst review</span></div>
+  <div class="card metric"><strong>{{ counts.assessed }}</strong><span>Completed assessments</span></div>
+  <div class="card metric"><strong>{{ counts.with_actions }}</strong><span>Alerts with actions</span></div>
+</section>
+<section>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Alert</th><th>Source severity</th><th>Triage status</th><th>Assessment</th><th>Escalation</th><th>Detected</th></tr></thead>
+    <tbody>
+    {% for row in alerts %}
+      <tr>
+        <td><a href="/alerts/{{ row.alert.alert_id }}"><strong>{{ row.alert.title }}</strong></a><br><span class="muted">{{ row.alert.source }}</span> · <code>{{ row.alert.alert_id }}</code></td>
+        <td><span class="badge badge-{{ row.alert.source_severity.value }}">{{ row.alert.source_severity.value }}</span></td>
+        <td>{% if row.execution %}<span class="badge badge-{{ row.execution.state.value }}">{{ row.execution.state.value | replace('_', ' ') }}</span>{% else %}<span class="badge badge-PENDING">UNTRIAGED</span>{% endif %}</td>
+        <td>{% if row.result %}<span class="badge badge-{{ row.result.disposition.value }}">{{ row.result.disposition.value }}</span><br><span class="muted">Assessed {{ row.result.severity.value }}</span>{% else %}<span class="muted">No assessment</span>{% endif %}</td>
+        <td>{% if row.result and row.result.escalation_required %}<span class="badge badge-HIGH">Required</span>{% elif row.result %}Not required{% else %}—{% endif %}</td>
+        <td><time datetime="{{ row.alert.detected_at }}">{{ row.alert.detected_at }}</time></td>
+      </tr>
+    {% else %}<tr><td colspan="6"><strong>No alerts ingested.</strong><br><span class="muted">Use the documented synthetic fixture ingestion workflow to populate this local demo.</span></td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<section class="card" aria-labelledby="system-status"><h3 id="system-status">Local system status</h3>
+  <dl><dt>Application</dt><dd>{{ system_status.application }}</dd><dt>Persistence</dt><dd>{{ system_status.persistence }}</dd><dt>Reasoner mode</dt><dd>{{ system_status.reasoner }}</dd><dt>Action execution</dt><dd><strong>{{ system_status.execution }}</strong></dd></dl>
+</section>
 {% endblock %}

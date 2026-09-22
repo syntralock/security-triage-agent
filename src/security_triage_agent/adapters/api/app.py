@@ -69,6 +69,8 @@ class AppDependencies:
     recovery_service: StaleStateRecoveryService
     clock: Clock
     max_request_bytes: int = 65_536
+    reasoner_mode: str = "deterministic/demo"
+    prompt_version: str | None = None
 
 
 def create_app(dependencies: AppDependencies) -> FastAPI:
@@ -261,6 +263,25 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
             approval_ids = {item.action_id for item in result.actions_requiring_approval}
             for action in result.recommended_actions:
                 definition = dependencies.action_catalog.lookup(action.catalog_action_id)
+                with dependencies.uow_factory() as uow:
+                    approval = uow.approvals.get_for_action(action.action_id)
+                    action_execution = uow.action_executions.get_for_action(action.action_id)
+                approval_state = (
+                    "EXPIRED"
+                    if approval
+                    and approval.expires_at
+                    and approval.expires_at <= dependencies.clock.now()
+                    else approval.decision.value
+                    if approval
+                    else "RECOMMENDED"
+                )
+                workflow_state = (
+                    "SIMULATED"
+                    if action_execution and action_execution.state.value == "SUCCEEDED"
+                    else "FAILED"
+                    if action_execution and action_execution.state.value == "FAILED"
+                    else approval_state
+                )
                 actions.append(
                     {
                         **action.model_dump(mode="json"),
@@ -269,16 +290,42 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
                         "execution_support": (
                             definition.execution_support.value if definition else "UNKNOWN"
                         ),
+                        "description": definition.description if definition else "",
+                        "objective": definition.objective if definition else "",
+                        "category": definition.category if definition else "",
+                        "workflow_state": workflow_state,
                     }
                 )
         policy_event = next(
             (item for item in audit if item.event_type == "triage.policy_enforced"), None
         )
+        evidence_by_call = (
+            {item.tool_invocation_id: item for item in result.evidence} if result else {}
+        )
+        goals_by_call = {
+            str(item.data.get("call_id")): item.data.get("evidence_goal")
+            for item in audit
+            if item.event_type == "triage.tool_invoked" and item.data.get("call_id")
+        }
+        tool_views = [
+            {
+                **item.model_dump(mode="json"),
+                "evidence_goal": goals_by_call.get(item.call_id),
+                "evidence": (
+                    evidence_by_call[item.call_id].model_dump(mode="json")
+                    if item.call_id in evidence_by_call
+                    else None
+                ),
+            }
+            for item in tools
+        ]
         return {
             "execution": execution.model_dump(mode="json"),
             "result": result.model_dump(mode="json") if result else None,
             "tools": [item.model_dump(mode="json") for item in tools],
+            "tool_views": tool_views,
             "audit": [item.model_dump(mode="json") for item in audit],
+            "audit_timeline": [_audit_view(item.model_dump(mode="json")) for item in audit],
             "actions": actions,
             "policy": policy_event.data if policy_event else None,
             "source_severity": alert.source_severity.value if alert else None,
@@ -313,25 +360,46 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         if persisted is None:
             raise HTTPException(status_code=404, detail="Action not found")
         definition = dependencies.action_catalog.lookup(persisted.action.catalog_action_id)
+        approval_state = (
+            "EXPIRED"
+            if approval and approval.expires_at and approval.expires_at <= dependencies.clock.now()
+            else approval.decision.value
+            if approval
+            else "PENDING"
+        )
+        workflow_state = (
+            "SIMULATED"
+            if execution and execution.state.value == "SUCCEEDED"
+            else "FAILED"
+            if execution and execution.state.value == "FAILED"
+            else approval_state
+        )
+        simulation_event = next(
+            (
+                item
+                for item in reversed(audit)
+                if item.event_type in {"action.simulation_succeeded", "action.simulation_failed"}
+            ),
+            None,
+        )
         return {
             "action": persisted.action.model_dump(mode="json"),
+            "triage_execution_id": persisted.execution_id,
             "action_digest": persisted.action.digest,
             "policy_version": persisted.policy_version,
             "risk": definition.risk.value if definition else "UNKNOWN",
             "approval_required": definition.approval_required if definition else False,
             "execution_support": definition.execution_support.value if definition else "UNKNOWN",
+            "description": definition.description if definition else "",
+            "objective": definition.objective if definition else "",
+            "category": definition.category if definition else "",
             "approval": approval.model_dump(mode="json") if approval else None,
-            "approval_state": (
-                "EXPIRED"
-                if approval
-                and approval.expires_at
-                and approval.expires_at <= dependencies.clock.now()
-                else approval.decision.value
-                if approval
-                else "PENDING"
-            ),
+            "approval_state": approval_state,
+            "workflow_state": workflow_state,
             "execution": execution.model_dump(mode="json") if execution else None,
             "audit": [item.model_dump(mode="json") for item in audit],
+            "audit_timeline": [_audit_view(item.model_dump(mode="json")) for item in audit],
+            "simulation_actor": simulation_event.actor_id if simulation_event else None,
         }
 
     @app.get("/api/actions/{action_id}")
@@ -380,11 +448,40 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
     ) -> HTMLResponse:
         with dependencies.uow_factory() as uow:
             alerts = uow.alerts.list_recent()
+            rows: list[dict[str, Any]] = []
+            counts = {
+                "total": len(alerts),
+                "untriaged": 0,
+                "needs_review": 0,
+                "assessed": 0,
+                "with_actions": 0,
+            }
+            for alert in alerts:
+                executions = uow.executions.list_for_alert(alert.alert_id)
+                latest = executions[0] if executions else None
+                result = (
+                    uow.triage_results.get_for_execution(latest.execution_id) if latest else None
+                )
+                if latest is None:
+                    counts["untriaged"] += 1
+                if latest and latest.state.value == "NEEDS_REVIEW":
+                    counts["needs_review"] += 1
+                if result:
+                    counts["assessed"] += 1
+                    if result.recommended_actions:
+                        counts["with_actions"] += 1
+                rows.append({"alert": alert, "execution": latest, "result": result})
         session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
         response = templates.TemplateResponse(
             request,
             "alerts.html",
-            {"alerts": alerts, "principal": identity, "csrf_token": token},
+            {
+                "alerts": rows,
+                "counts": counts,
+                "principal": identity,
+                "csrf_token": token,
+                "system_status": _system_status(dependencies),
+            },
         )
         if created:
             response.set_cookie(csrf.cookie_name, session_id, httponly=True, samesite="strict")
@@ -399,8 +496,10 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         with dependencies.uow_factory() as uow:
             alert = uow.alerts.get(alert_id)
             executions = uow.executions.list_for_alert(alert_id)
+            alert_audit = uow.audit.list_for_target("security_alert", alert_id)
         if alert is None:
             raise HTTPException(status_code=404, detail="Alert not found")
+        latest = execution_payload(executions[0].execution_id) if executions else None
         session_id, token, created = csrf.issue(request.cookies.get(csrf.cookie_name))
         response = templates.TemplateResponse(
             request,
@@ -408,7 +507,10 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
             {
                 "alert": alert,
                 "executions": executions,
+                "latest": latest,
+                "alert_audit": [_audit_view(item.model_dump(mode="json")) for item in alert_audit],
                 "principal": identity,
+                "analyst_authorized": dependencies.authorization.may_ingest_or_triage(identity),
                 "csrf_token": token,
             },
         )
@@ -431,6 +533,8 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
                 **payload,
                 "principal": identity,
                 "reviewer_authorized": dependencies.authorization.may_review(identity),
+                "reasoner_mode": dependencies.reasoner_mode,
+                "prompt_version": dependencies.prompt_version,
                 "csrf_token": token,
             },
         )
@@ -472,6 +576,34 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         if not csrf.validate(request.cookies.get(csrf.cookie_name), form.get("csrf_token")):
             raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
+    def required_reason(form: dict[str, str]) -> str:
+        reason = form.get("reason", "").strip()
+        if not 1 <= len(reason) <= 2_000:
+            raise HTTPException(status_code=422, detail="A review reason is required")
+        return reason
+
+    @app.post("/alerts/{alert_id}/triage")
+    async def browser_triage(
+        request: Request,
+        alert_id: str,
+        _identity: Annotated[Principal, Depends(analyst)],
+    ) -> RedirectResponse:
+        form = await browser_form(request)
+        verify_csrf(request, form)
+        with dependencies.uow_factory() as uow:
+            alert = uow.alerts.get(alert_id)
+        if alert is None:
+            raise HTTPException(status_code=404, detail="Alert not found")
+        outcome = dependencies.orchestrator.run(
+            alert,
+            idempotency_key=dependencies.identifiers.next_id("browser-triage"),
+            execution_id=dependencies.identifiers.next_id("execution"),
+            correlation_id=dependencies.identifiers.next_id("correlation"),
+        )
+        if not outcome.durable:
+            raise HTTPException(status_code=503, detail="Triage result was not durably persisted")
+        return RedirectResponse(f"/executions/{outcome.execution_id}", status_code=303)
+
     @app.post("/actions/{action_id}/approve")
     async def browser_approve(
         request: Request,
@@ -481,7 +613,7 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         form = await browser_form(request)
         verify_csrf(request, form)
         dependencies.approval_service.approve(
-            action_id, identity.principal_id, form.get("reason", "No reason supplied.")
+            action_id, identity.principal_id, required_reason(form)
         )
         return RedirectResponse(f"/actions/{action_id}", status_code=303)
 
@@ -494,7 +626,7 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         form = await browser_form(request)
         verify_csrf(request, form)
         dependencies.approval_service.reject(
-            action_id, identity.principal_id, form.get("reason", "No reason supplied.")
+            action_id, identity.principal_id, required_reason(form)
         )
         return RedirectResponse(f"/actions/{action_id}", status_code=303)
 
@@ -510,3 +642,54 @@ def create_app(dependencies: AppDependencies) -> FastAPI:
         return RedirectResponse(f"/actions/{action_id}", status_code=303)
 
     return app
+
+
+def _system_status(dependencies: AppDependencies) -> dict[str, str]:
+    return {
+        "application": "Healthy",
+        "persistence": "Ready",
+        "reasoner": dependencies.reasoner_mode,
+        "execution": "Simulation only",
+    }
+
+
+def _audit_view(event: dict[str, Any]) -> dict[str, Any]:
+    labels = {
+        "alert.ingested": "Alert ingested",
+        "triage.execution_started": "Triage started",
+        "triage.tool_invoked": "Evidence tool processed",
+        "triage.policy_enforced": "Deterministic policy enforced",
+        "triage.execution_terminal": "Assessment completed",
+        "action.recommended": "Action recommended",
+        "action.approved": "Action approved",
+        "action.rejected": "Action rejected",
+        "action.simulation_started": "Simulation started",
+        "action.simulation_succeeded": "Simulation succeeded",
+        "action.simulation_failed": "Simulation failed",
+        "triage.execution_recovered": "Stale triage recovered",
+        "action.execution_recovered": "Stale simulation recovered",
+    }
+    data = event.get("data") or {}
+    safe_keys = (
+        "state",
+        "tool_name",
+        "authorization",
+        "outcome",
+        "evidence_goal",
+        "policy_version",
+        "reason_codes",
+        "orchestration_reason",
+        "disposition",
+        "decision",
+        "mode",
+    )
+    details = {key: data[key] for key in safe_keys if key in data}
+    return {
+        "occurred_at": event.get("occurred_at"),
+        "event_type": event.get("event_type"),
+        "label": labels.get(str(event.get("event_type")), str(event.get("event_type"))),
+        "actor_id": event.get("actor_id"),
+        "outcome": event.get("outcome"),
+        "failure_category": event.get("failure_category"),
+        "details": details,
+    }

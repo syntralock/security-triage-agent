@@ -1,26 +1,27 @@
 {% extends "base.html" %}
-{% block title %}{{ execution.execution_id }} · Security Triage Agent{% endblock %}
+{% block title %}Investigation · Security Triage Agent{% endblock %}
 {% block content %}
-<h2>Execution <code>{{ execution.execution_id }}</code></h2>
-<p>State: <strong>{{ execution.state }}</strong></p>
+<div class="page-heading"><div><p class="eyebrow">AI investigation</p><h2>Assessment and evidence</h2></div><a href="/alerts/{{ execution.alert_id }}">← Source alert</a></div>
+<p><span class="badge badge-{{ execution.state }}">{{ execution.state | replace('_', ' ') }}</span> <code>{{ execution.execution_id }}</code></p>
 {% if result %}
-<section><h3>Assessment</h3>
-  <dl><dt>Disposition</dt><dd>{{ result.disposition }}</dd>
-  <dt>Source severity</dt><dd>{{ source_severity }} — <a href="/alerts/{{ result.alert_id }}">view source alert</a></dd>
-  <dt>Assessed severity</dt><dd>{{ result.severity }}</dd>
-  <dt>Model-reported confidence</dt><dd>{{ result.confidence }} (presentation only; not calibrated)</dd>
-  <dt>Escalation</dt><dd>{{ result.escalation_required }}{% if result.escalation_reason %}: {{ result.escalation_reason }}{% endif %}</dd>
-  <dt>Reasoning summary</dt><dd>{{ result.reasoning_summary }}</dd></dl>
-</section>
-<section><h3>Policy decision</h3><pre>{{ policy | tojson(indent=2) }}</pre></section>
-<section><h3>Evidence provenance</h3><table><thead><tr><th>ID</th><th>Source</th><th>Version</th><th>Summary</th></tr></thead><tbody>
-{% for item in result.evidence %}<tr><td>{{ item.evidence_id }}</td><td>{{ item.source_type }} / {{ item.source_reference }}</td><td>{{ item.source_version }}</td><td>{{ item.summary }}</td></tr>{% else %}<tr><td colspan="4">No evidence.</td></tr>{% endfor %}
-</tbody></table></section>
-<section><h3>Recommended actions</h3><table><thead><tr><th>Action</th><th>Target</th><th>Risk</th><th>Approval</th><th>Execution</th></tr></thead><tbody>
-{% for action in actions %}<tr><td><a href="/actions/{{ action.action_id }}">{{ action.catalog_action_id }}</a><br>{{ action.rationale }}</td><td>{{ action.target.identifier }}</td><td>{{ action.risk }}</td><td>{% if action.approval_required %}<strong>REQUIRED</strong>{% else %}Not required{% endif %}</td><td>{{ action.execution_support }}</td></tr>{% else %}<tr><td colspan="5">No recommended actions.</td></tr>{% endfor %}
-</tbody></table><p>Every supported execution is a simulation. No real remediation is available.</p></section>
-{% endif %}
-<section><h3>Tool attempts</h3><table><thead><tr><th>Call</th><th>Tool</th><th>Authorization</th><th>Outcome</th></tr></thead><tbody>
-{% for item in tools %}<tr><td>{{ item.call_id }}</td><td>{{ item.tool_name }}</td><td>{{ item.authorization }}</td><td>{{ item.outcome }}</td></tr>{% else %}<tr><td colspan="4">No tool attempts.</td></tr>{% endfor %}</tbody></table></section>
-<section><h3>Audit timeline</h3><ol>{% for item in audit %}<li>{{ item.occurred_at }} — {{ item.event_type }} — {{ item.outcome }}<pre>{{ item.data | tojson }}</pre></li>{% else %}<li>No audit events.</li>{% endfor %}</ol></section>
+<section class="card"><p class="eyebrow">Advisory assessment</p><div class="grid metrics">
+  <div class="metric"><span>Disposition</span><strong><span class="badge badge-{{ result.disposition }}">{{ result.disposition }}</span></strong></div>
+  <div class="metric"><span>Assessed severity</span><strong><span class="badge badge-{{ result.severity }}">{{ result.severity }}</span></strong></div>
+  <div class="metric"><span>Model-reported confidence</span><strong>{{ result.confidence }}</strong></div>
+  <div class="metric"><span>Escalation</span><strong>{% if result.escalation_required %}Required{% else %}Not required{% endif %}</strong></div>
+</div><p class="muted">Model confidence is advisory (presentation only; not calibrated). BENIGN does not close or suppress this alert.</p>
+<h3>Reviewer-facing reasoning</h3><p class="prose">{{ result.reasoning_summary }}</p>{% if result.escalation_reason %}<p><strong>Escalation reason:</strong> {{ result.escalation_reason }}</p>{% endif %}</section>
+<div class="grid two-column">
+<section class="card"><h3>Severity distinction</h3><dl><dt>Source severity</dt><dd><span class="badge badge-{{ source_severity }}">{{ source_severity }}</span></dd><dt>Assessed severity</dt><dd><span class="badge badge-{{ result.severity }}">{{ result.severity }}</span></dd></dl><p class="muted">Source severity came from the alert provider. Assessed severity is the advisory triage assessment.</p></section>
+<section class="card"><h3>Policy decision</h3>{% if policy %}<dl><dt>Policy version</dt><dd>{{ policy.policy_version }}</dd><dt>Outcome</dt><dd>{{ policy.orchestration_reason }}</dd><dt>Reason codes</dt><dd>{{ policy.reason_codes | join(', ') }}</dd><dt>Enforced disposition</dt><dd>{{ policy.disposition }}</dd></dl>{% else %}<p>Policy decision unavailable.</p>{% endif %}</section>
+</div>
+{% else %}<section class="notice"><strong>No final assessment is available.</strong> The execution is {{ execution.state | replace('_', ' ') }}{% if execution.failure_category %}; safe failure category: {{ execution.failure_category }}{% endif %}.</section>{% endif %}
+<section><h3>Investigation chronology</h3><p class="muted">Investigation purpose is reviewer-visible metadata, not evidence or private reasoning.</p><div class="table-wrap"><table><thead><tr><th>Time</th><th>Evidence source</th><th>Investigation purpose</th><th>Gateway</th><th>Evidence/provenance</th></tr></thead><tbody>
+{% for item in tool_views %}<tr><td>{{ item.started_at }}</td><td><strong>{{ item.tool_name }}</strong><br><code>{{ item.call_id }}</code></td><td>{{ item.evidence_goal or 'Not supplied by this prompt version.' }}</td><td><span class="badge">{{ item.authorization }}</span><br>{{ item.outcome }}{% if item.failure_category %}<br>Safe failure: {{ item.failure_category }}{% endif %}</td><td>{% if item.evidence %}{{ item.evidence.summary }}<br><span class="muted">Version {{ item.evidence.source_version }} · {{ item.evidence.evidence_id }}</span>{% else %}<span class="muted">No evidence record produced.</span>{% endif %}</td></tr>{% else %}<tr><td colspan="5">No evidence tools were requested.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% if result %}<section><h3>Recommended actions</h3><div class="table-wrap"><table><thead><tr><th>Action</th><th>Objective</th><th>Target</th><th>Risk / approval</th><th>Status</th></tr></thead><tbody>
+{% for action in actions %}<tr><td><a href="/actions/{{ action.action_id }}"><strong>{{ action.catalog_action_id }}</strong></a><br>{{ action.rationale }}</td><td>{{ action.objective }}</td><td>{{ action.target.entity_type }} · {{ action.target.identifier }}</td><td><span class="badge badge-HIGH">{{ action.risk }}</span><br>{% if action.approval_required %}<strong>REQUIRED</strong> — human approval{% else %}Not required{% endif %}<br>{{ action.execution_support }}</td><td><span class="badge badge-{{ action.workflow_state }}">{{ action.workflow_state }}</span></td></tr>{% else %}<tr><td colspan="5"><strong>No response action recommended.</strong><br><span class="muted">The assessment remains advisory and still requires analyst review.</span></td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}
+<section><h3>Audit timeline</h3><ol class="timeline">{% for item in audit_timeline %}<li><time>{{ item.occurred_at }}</time><p><strong>{{ item.label }}</strong>{% if item.outcome %} · {{ item.outcome }}{% endif %}</p>{% if item.actor_id %}<p class="muted">Actor: {{ item.actor_id }}</p>{% endif %}{% if item.details %}<p class="muted">{% for key, value in item.details.items() %}{{ key | replace('_', ' ') }}: {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}{% if item.failure_category %}<p>Safe failure: {{ item.failure_category }}</p>{% endif %}</li>{% else %}<li>No audit events.</li>{% endfor %}</ol></section>
+<section class="card"><h3>Technical provenance</h3><dl><dt>Reasoner</dt><dd>{{ reasoner_mode }}</dd><dt>Prompt</dt><dd>{{ prompt_version or 'Not applicable' }}</dd><dt>Execution mode</dt><dd>Advisory reasoning; deterministic controls authoritative</dd></dl></section>
 {% endblock %}

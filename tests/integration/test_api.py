@@ -20,6 +20,7 @@ from security_triage_agent.application.approval_service import (
     WorkflowError,
     WorkflowErrorCode,
 )
+from security_triage_agent.application.persistence import AuditEvent, AuditOutcome
 from security_triage_agent.application.ports.auth import Principal, PrincipalRole
 from security_triage_agent.application.ports.executors import ActionExecutionResult
 from security_triage_agent.bootstrap import build_dependencies
@@ -163,6 +164,152 @@ def test_ingest_triage_and_read_views_are_durable(tmp_path: Path, fixture_root: 
     )
     with TestClient(create_app(reopened)) as client:
         assert client.get(f"/api/executions/{execution_id}").status_code == 200
+
+
+def test_dashboard_counts_and_status_come_from_persisted_workflow(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    first = fixture_alert(fixture_root, index=0)
+    second = fixture_alert(fixture_root, index=1)
+    with TestClient(create_app(deps)) as client:
+        ingest(client, first)
+        response = client.post(
+            "/api/alerts", headers={"Idempotency-Key": "dashboard-2"}, json=second
+        )
+        assert response.status_code == 201
+        triage = client.post(
+            f"/api/alerts/{second['alert_id']}/triage",
+            headers={"Idempotency-Key": "dashboard-triage"},
+            json={},
+        )
+        assert triage.status_code == 200
+
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert re.search(r"<strong>2</strong><span>Total alerts</span>", page.text)
+    assert re.search(r"<strong>1</strong><span>Pending / untriaged</span>", page.text)
+    assert re.search(r"<strong>1</strong><span>Completed assessments</span>", page.text)
+    assert re.search(r"<strong>1</strong><span>Alerts with actions</span>", page.text)
+    assert "Deterministic demo" in page.text
+    assert "Simulation only" in page.text
+
+
+def test_dashboard_empty_state_is_actionable(tmp_path: Path, fixture_root: Path) -> None:
+    with TestClient(create_app(dependencies(tmp_path, fixture_root))) as client:
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert "No alerts ingested" in page.text
+    assert "synthetic fixture ingestion workflow" in page.text
+    assert re.search(r"<strong>0</strong><span>Total alerts</span>", page.text)
+
+
+def test_browser_triage_uses_csrf_authorization_and_existing_orchestrator(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    alert = fixture_alert(fixture_root)
+    with TestClient(create_app(deps)) as client:
+        ingest(client, alert)
+        detail = client.get(f"/alerts/{alert['alert_id']}")
+        token_match = re.search(r'name="csrf_token" value="([a-f0-9]+)"', detail.text)
+        assert token_match is not None
+        assert "Not triaged" in detail.text
+        denied = client.post(f"/alerts/{alert['alert_id']}/triage", data={"unexpected": "value"})
+        assert denied.status_code == 403
+        started = client.post(
+            f"/alerts/{alert['alert_id']}/triage",
+            data={"csrf_token": token_match.group(1)},
+            follow_redirects=False,
+        )
+        assert started.status_code == 303
+        assert started.headers["location"].startswith("/executions/")
+        result = client.get(started.headers["location"])
+        assert result.status_code == 200
+        assert "AI investigation" in result.text
+
+    viewer = Principal(
+        principal_id="development-viewer", role=PrincipalRole.VIEWER, development_only=True
+    )
+    with TestClient(
+        create_app(replace(deps, principal_provider=StaticPrincipalProvider(viewer)))
+    ) as client:
+        assert client.post(f"/alerts/{alert['alert_id']}/triage", data={}).status_code == 403
+
+
+def test_alert_detail_distinguishes_source_and_needs_review_assessment(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    alert = fixture_alert(fixture_root, index=2)
+    with TestClient(create_app(deps)) as client:
+        ingest(client, alert)
+        response = client.post(
+            f"/api/alerts/{alert['alert_id']}/triage",
+            headers={"Idempotency-Key": "needs-review-detail"},
+            json={},
+        )
+        assert response.status_code == 200
+        assert response.json()["result"]["disposition"] == "NEEDS_REVIEW"
+        page = client.get(f"/alerts/{alert['alert_id']}")
+
+    assert "Source alert" in page.text
+    assert "Source severity" in page.text
+    assert "Assessed severity" in page.text
+    assert "NEEDS_REVIEW" in page.text
+    assert "not a calibrated probability" in page.text
+
+
+def test_investigation_displays_goal_provenance_and_safe_audit_only(
+    tmp_path: Path, fixture_root: Path
+) -> None:
+    deps = dependencies(tmp_path, fixture_root)
+    alert = fixture_alert(fixture_root, index=1)
+    with TestClient(create_app(deps)) as client:
+        ingest(client, alert)
+        triage = client.post(
+            f"/api/alerts/{alert['alert_id']}/triage",
+            headers={"Idempotency-Key": "goal-display"},
+            json={},
+        ).json()
+        execution_id = triage["execution_id"]
+        call_id = triage["result"]["tool_calls"][0]["invocation_id"]
+        with deps.uow_factory() as uow:
+            uow.audit.append(
+                AuditEvent(
+                    event_id=deps.identifiers.next_id("audit"),
+                    event_type="triage.tool_invoked",
+                    occurred_at=deps.clock.now(),
+                    execution_id=execution_id,
+                    target_type="triage_execution",
+                    target_id=execution_id,
+                    data={
+                        "call_id": call_id,
+                        "tool_name": "get_user_risk",
+                        "authorization": "ALLOWED",
+                        "outcome": "SUCCESS",
+                        "evidence_goal": (
+                            "Resolve material identity-risk uncertainty. "
+                            "<script>must-not-execute</script>"
+                        ),
+                        "raw_exception": "must-not-render",
+                    },
+                    outcome=AuditOutcome.SUCCESS,
+                )
+            )
+            uow.commit()
+        page = client.get(f"/executions/{execution_id}")
+
+    assert "Investigation purpose" in page.text
+    assert "Resolve material identity-risk uncertainty." in page.text
+    assert "<script>must-not-execute</script>" not in page.text
+    assert "&lt;script&gt;must-not-execute&lt;/script&gt;" in page.text
+    assert "Sanitized get_user_risk outcome: FOUND." in page.text
+    assert "Evidence tool processed" in page.text
+    assert "must-not-render" not in page.text
+    assert "chain-of-thought" not in page.text.lower()
 
 
 def test_strict_schema_conflict_and_authoritative_field_rejection(
@@ -444,6 +591,11 @@ def test_browser_forms_require_bound_csrf_and_escape_reason(
         assert "SIMULATED ONLY" in page.text
         token_match = re.search(r'name="csrf_token" value="([a-f0-9]+)"', page.text)
         assert token_match is not None
+        blank_reason = client.post(
+            f"/actions/{action_id}/approve",
+            data={"csrf_token": token_match.group(1), "reason": "   "},
+        )
+        assert blank_reason.status_code == 422
         assert (
             client.post(f"/actions/{action_id}/approve", data={"reason": "missing"}).status_code
             == 403

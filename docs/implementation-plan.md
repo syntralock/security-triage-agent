@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Status: architecture approved on 2026-09-17. Milestones 0–11 are complete; M12A security and reliability hardening is in review. M12B agent-quality tuning and M12C public-release work have not started and require explicit approval. Each milestone is intentionally small, reviewable, and independently testable.
+Status: architecture approved on 2026-09-17. Milestones 0–11 and M12A are complete. M12B reasoning development is complete with `openai-l1-v2` retained as experimental/advisory. M12C local product and demo release work is implemented for review. Each milestone is intentionally small, reviewable, and independently testable.
 
 ## Milestone 0 — Architecture approval
 
@@ -122,7 +122,7 @@ Add the OpenAI SDK adapter behind `AgentReasoner`, strict structured output/tool
 
 ## Milestone 12 — Hardening and portfolio release
 
-**M12A status:** implemented for review on 2026-09-21. Scope is security and reliability hardening only: explicit stale-state recovery, fail-closed production validation, provider correlation, immutable-value report serialization, prompt-version integrity, container limits, security/secret documentation, and frozen M11 baseline evidence. M12B and M12C remain unstarted.
+**M12C status:** implemented for review on 2026-09-22. The deliverable is a local/demo product workflow over the existing security architecture: persisted alert dashboard, source/assessment separation, investigation purposes and evidence provenance, deterministic-policy presentation, exact action review, CSRF-protected human decisions, simulation-only execution, safe audit timelines, repeatable demo documentation, and a release-readiness assessment. `openai-l1-v2` remains experimental/advisory; no production integration or real remediation was added.
 
 Complete threat model, abuse cases, dependency/container hardening, rate/input limits, audit-integrity decision, observability, retention/redaction documentation, PostgreSQL compatibility test, accessibility pass, and demonstration walkthrough.
 

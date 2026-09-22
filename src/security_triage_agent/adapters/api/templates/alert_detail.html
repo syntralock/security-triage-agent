@@ -1,15 +1,36 @@
 {% extends "base.html" %}
-{% block title %}{{ alert.alert_id }} · Security Triage Agent{% endblock %}
+{% block title %}{{ alert.title }} · Security Triage Agent{% endblock %}
 {% block content %}
-<h2>{{ alert.title }}</h2>
-<dl>
-  <dt>Alert ID</dt><dd><code>{{ alert.alert_id }}</code></dd>
-  <dt>Source severity</dt><dd>{{ alert.source_severity.value }}</dd>
-  <dt>Source</dt><dd>{{ alert.source }}</dd>
-  <dt>Description</dt><dd>{{ alert.description }}</dd>
-  <dt>Provider schema</dt><dd>{{ alert.provider_schema_version }}</dd>
-</dl>
-<h3>Executions</h3>
-<ul>{% for item in executions %}<li><a href="/executions/{{ item.execution_id }}">{{ item.execution_id }}</a> — {{ item.state.value }}</li>{% else %}<li>No triage execution yet.</li>{% endfor %}</ul>
-<p>Triage initiation is available only through the authenticated API. This read-only UI performs no mutation.</p>
+<div class="page-heading"><div><p class="eyebrow">Alert detail</p><h2>{{ alert.title }}</h2></div><a href="/">← Alert queue</a></div>
+<div class="grid two-column">
+  <section class="card"><h3>Source alert</h3><dl>
+    <dt>Alert identifier</dt><dd><code>{{ alert.alert_id }}</code></dd>
+    <dt>Type / source</dt><dd>{{ alert.source }}</dd>
+    <dt>Source severity</dt><dd><span class="badge badge-{{ alert.source_severity.value }}">{{ alert.source_severity.value }}</span></dd>
+    <dt>Occurred</dt><dd>{{ alert.occurred_at }}</dd><dt>Detected</dt><dd>{{ alert.detected_at }}</dd>
+    <dt>Description</dt><dd class="prose">{{ alert.description }}</dd>
+    <dt>Scoped entities</dt><dd>{% for entity in alert.entities %}<span class="badge">{{ entity.entity_type.value }} · {{ entity.identifier }}</span> {% endfor %}</dd>
+  </dl></section>
+  <section class="card"><h3>Latest triage</h3>
+  {% if latest and latest.result %}
+    <dl><dt>Execution state</dt><dd><span class="badge badge-{{ latest.execution.state }}">{{ latest.execution.state | replace('_', ' ') }}</span></dd>
+    <dt>Disposition</dt><dd><span class="badge badge-{{ latest.result.disposition }}">{{ latest.result.disposition }}</span></dd>
+    <dt>Assessed severity</dt><dd><span class="badge badge-{{ latest.result.severity }}">{{ latest.result.severity }}</span></dd>
+    <dt>Model confidence</dt><dd>{{ latest.result.confidence }} <span class="muted">Advisory; not a calibrated probability.</span></dd>
+    <dt>Escalation</dt><dd>{% if latest.result.escalation_required %}<strong>Required</strong>{% else %}Not required{% endif %}{% if latest.result.escalation_reason %}<br>{{ latest.result.escalation_reason }}{% endif %}</dd>
+    <dt>Reasoning summary</dt><dd class="prose">{{ latest.result.reasoning_summary }}</dd>
+    <dt>Policy version</dt><dd>{{ latest.policy.policy_version if latest.policy else 'Unavailable' }}</dd></dl>
+    <p><a href="/executions/{{ latest.execution.execution_id }}">Review complete investigation →</a></p>
+  {% elif latest %}
+    <p><span class="badge badge-{{ latest.execution.state }}">{{ latest.execution.state | replace('_', ' ') }}</span></p><p>No final assessment is available yet.</p>
+  {% else %}
+    <p><strong>Not triaged.</strong></p><p class="muted">No investigation or assessment has been recorded for this alert.</p>
+  {% endif %}
+  {% if analyst_authorized %}<form method="post" action="/alerts/{{ alert.alert_id }}/triage"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">{% if latest %}Start new triage{% else %}Start triage{% endif %}</button></form>{% else %}<p class="muted">Your role has read-only access.</p>{% endif %}
+  </section>
+</div>
+<section><h3>Execution history</h3><div class="table-wrap"><table><thead><tr><th>Execution</th><th>State</th><th>Started</th><th>Last updated</th></tr></thead><tbody>
+{% for item in executions %}<tr><td><a href="/executions/{{ item.execution_id }}"><code>{{ item.execution_id }}</code></a></td><td><span class="badge badge-{{ item.state.value }}">{{ item.state.value | replace('_', ' ') }}</span></td><td>{{ item.created_at }}</td><td>{{ item.updated_at }}</td></tr>{% else %}<tr><td colspan="4">No triage execution yet.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% if alert_audit %}<section><h3>Alert history</h3><ol class="timeline">{% for item in alert_audit %}<li><time>{{ item.occurred_at }}</time><p><strong>{{ item.label }}</strong> · {{ item.outcome }}</p>{% if item.actor_id %}<p class="muted">Actor: {{ item.actor_id }}</p>{% endif %}</li>{% endfor %}</ol></section>{% endif %}
 {% endblock %}

@@ -89,10 +89,21 @@ missing fact and is reasonably likely to change the assessment. Otherwise stop a
 when the missing fact prevents a defensible classification. Do not discard material conflicting
 evidence; summarize it, and use NEEDS_REVIEW if it prevents a defensible conclusion.
 
-BENIGN requires both a credible non-malicious explanation and adequate resolution of material
-suspicious indicators. Absence of suspicious activity across several sources is not itself a
-credible benign explanation while a material evidentiary gap remains. Do not require exhaustive
-evidence once that standard is met.
+BENIGN requires affirmative evidence that resolves the material security concern with a credible
+non-malicious explanation and adequate resolution of material suspicious indicators. Before
+returning BENIGN, determine internally what security concern the alert raises, what evidence
+explains that concern, whether it provides a credible non-malicious explanation, and whether any
+material suspicious indicator remains unresolved. "No evidence currently proves compromise" is
+not equivalent to "evidence explains why this activity is benign." Absence of adverse evidence,
+ordinary account characteristics, an enabled identity, expected privilege, a managed or compliant
+device, empty results, NOT_FOUND, or inability to obtain evidence is not alone affirmative benign
+evidence. Ordinary context may affect severity or plausibility but cannot by itself resolve an
+unrelated security concern. Multiple empty or unrelated sources do not collectively establish a
+benign explanation. If unavailable, conflicting, or insufficient evidence leaves a material
+security fact unresolved, stop at NEEDS_REVIEW rather than infer BENIGN. Do not introduce a
+minimum evidence or tool count: one decisive source may establish a credible benign explanation,
+and one unresolved material fact may justify NEEDS_REVIEW. Do not require exhaustive evidence
+once the BENIGN standard is met.
 
 Assess severity independently from disposition certainty and source severity. INFORMATIONAL
 means no meaningful current impact. LOW means limited impact to one low-value entity with
@@ -135,7 +146,7 @@ class PromptDefinition:
 
 
 V2_PROMPT_SHA256 = (  # pragma: allowlist secret -- public prompt-integrity digest
-    "8d78468ceb65c167ec7d2d0be49eebd977e4f7c23c5011711a50d3796a84fe7f"  # pragma: allowlist secret
+    "ce54aee7df1be69a32e46fdbb89ebac95179e92bd2b7cff3cdc3e9673359b6d2"  # pragma: allowlist secret
 )
 PROMPT_DEFINITIONS = MappingProxyType(
     {

@@ -649,6 +649,51 @@ def test_v2_prompt_encodes_minimum_defensible_stopping_contract() -> None:
     assert all(item in normalized for item in required)
 
 
+def test_v2_prompt_encodes_affirmative_benign_sufficiency_contract() -> None:
+    normalized = " ".join(V2_INSTRUCTIONS.split())
+    required = (
+        "BENIGN requires affirmative evidence",
+        "resolves the material security concern",
+        (
+            '"No evidence currently proves compromise" is not equivalent to '
+            '"evidence explains why this activity is benign."'
+        ),
+        "Absence of adverse evidence",
+        "ordinary account characteristics",
+        "an enabled identity",
+        "expected privilege",
+        "a managed or compliant device",
+        "Multiple empty or unrelated sources do not collectively establish a benign explanation",
+        "NOT_FOUND",
+        "stop at NEEDS_REVIEW rather than infer BENIGN",
+        "one decisive source may establish a credible benign explanation",
+        "one unresolved material fact may justify NEEDS_REVIEW",
+        "Do not introduce a minimum evidence or tool count",
+        "Confidence is advisory and uncalibrated",
+    )
+    assert all(item in normalized for item in required)
+
+
+def test_v2_benign_correction_preserves_stopping_scope_and_anti_leakage_contracts() -> None:
+    normalized = " ".join(V2_INSTRUCTIONS.split())
+    preserved = (
+        "minimum defensible assessment, not maximum available certainty",
+        "decision-relevant material uncertainty",
+        "The mere possibility of additional context is insufficient",
+        "do not seek corroboration merely to increase confidence",
+        "Do not gather additional evidence solely for perfect severity certainty",
+        "Do not investigate solely to justify the strongest containment action",
+        "NEEDS_REVIEW is a successful bounded conclusion",
+        "authorized_tool_targets",
+        "Artificial-environment cues",
+    )
+    assert all(item in normalized for item in preserved)
+    assert all(
+        field not in OpenAIV2ReasonerOutput.model_json_schema().get("properties", {})
+        for field in ("chain_of_thought", "private_reasoning")
+    )
+
+
 def test_schema_exposes_only_seven_evidence_tool_identities() -> None:
     schema = OpenAIReasonerOutput.model_json_schema()
     serialized = json.dumps(schema)

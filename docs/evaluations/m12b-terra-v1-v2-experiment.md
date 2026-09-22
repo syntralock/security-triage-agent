@@ -98,3 +98,33 @@ scenario rule or attempt to match historical labels. It names no scenario, tool,
 or benchmark-specific evidence. Scope communication, anti-leakage presentation, ToolGateway,
 policy, approval, and execution controls remain unchanged. The correction is experimental and no
 improvement is claimed until separately tested.
+
+## M12B.5 targeted stopping validation
+
+The reviewed four-scenario validation reduced completed evidence calls from 18 to 7, calls after
+the earliest defensible stopping point from 5 to 0, and deadline terminations from 1 to 0. The
+privileged-risk case returned a completed SUSPICIOUS/HIGH candidate before its deadline, the known
+benign case remained defensibly BENIGN, the typed missing-evidence case stopped safely at
+NEEDS_REVIEW, and observed scope violations and artificial-environment leakage remained zero.
+
+One material defect remained. The insufficient-evidence case stopped after ordinary identity
+context and returned BENIGN even though that context neither explained the alert's material
+security concern nor resolved the missing security fact. This exposed a distinction not stated
+strongly enough by the preceding contract: absence of adverse evidence or ordinary context is not
+affirmative evidence of a credible non-malicious explanation.
+
+## Approved M12B.6 BENIGN-sufficiency correction
+
+The approved correction requires affirmative explanatory evidence before BENIGN: evidence must
+resolve the material security concern with a credible non-malicious explanation and leave no
+material suspicious indicator unresolved. Ordinary identity or device context, empty results,
+NOT_FOUND, and the inability to obtain evidence cannot establish BENIGN by themselves. If a
+material security fact remains unavailable, conflicting, or insufficiently supported, the
+bounded conclusion is NEEDS_REVIEW.
+
+This correction addresses a general evidentiary distinction, not a historical benchmark answer.
+It adds no minimum tool count: one decisive source may justify BENIGN, while one unresolved
+material fact may justify NEEDS_REVIEW. The minimum-defensible-assessment stopping rule,
+decision-changing-evidence test, evidence_goal, scope controls, anti-leakage projection,
+ToolGateway authority, deterministic policy, and approval/execution boundaries remain unchanged.
+No improvement is claimed until the separately authorized live validation is complete.

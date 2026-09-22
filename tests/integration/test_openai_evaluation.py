@@ -15,7 +15,11 @@ from security_triage_agent.adapters.persistence.models import (
     ApprovalDecisionRow,
 )
 from security_triage_agent.adapters.persistence.uow import create_engine
-from security_triage_agent.adapters.reasoners.openai import V2_PROMPT_VERSION, OpenAIReasoner
+from security_triage_agent.adapters.reasoners.openai import (
+    V2_PROMPT_VERSION,
+    OpenAIReasoner,
+    OpenAIV2ReasonerOutput,
+)
 from security_triage_agent.config import Environment, ReasonerProvider, Settings
 from security_triage_agent.domain.states import TriageExecutionState
 
@@ -42,6 +46,10 @@ class ScenarioResponses:
                     "arguments": {"user_id": user["identifier"]},
                 }
             }
+            if kwargs["text_format"] is OpenAIV2ReasonerOutput:
+                parsed["step"]["evidence_goal"] = (
+                    "Determine whether identity risk materially changes the assessment."
+                )
         else:
             evidence = context["evidence"]
             parsed = {

@@ -18,6 +18,7 @@ class ReasonerToolCall(DomainModel):
     step_type: Literal["TOOL_CALL"] = "TOOL_CALL"
     tool_name: Identifier
     arguments: dict[str, object]
+    evidence_goal: str | None = Field(default=None, min_length=1, max_length=240)
 
 
 class ReasonerCandidate(DomainModel):

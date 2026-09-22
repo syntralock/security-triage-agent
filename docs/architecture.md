@@ -12,6 +12,14 @@ The provider receives only a bounded `ReasonerContext` serialization. V2 adds a 
 
 For v2 only, the provider-facing projection removes provider payload provenance fields and neutralizes artificial-environment labels such as synthetic/demo/test/fixture wording, expected-baseline prose, and artificial hostname/identifier cues. Security-relevant facts, typed values, and identifiers needed for scope are preserved. This transformation does not mutate the normalized alert, fixture result, durable audit record, evaluation ground truth, or v1 context. Synthetic-only transmission remains an external safety requirement rather than evidence for a security conclusion.
 
+V2 evidence proposals also include a bounded reviewer-facing `evidence_goal` describing the
+material uncertainty the requested source is intended to resolve. The goal is diagnostic
+metadata only: it is not passed into `ToolGateway`, included in authorization fingerprints or
+budgets, or converted into evidence. The orchestrator appends it to the existing immutable
+`triage.tool_invoked` audit event beside the canonical invocation ID and gateway outcome. This
+uses the audit event's existing bounded structured metadata and requires no database migration;
+v1 and deterministic reasoners may omit the field.
+
 Malformed/refused responses and timeout, authentication, rate-limit, unavailable-service, connection, or unexpected SDK failures become categorized sanitized adapter errors. Existing orchestration turns them into a durable policy-safe `NEEDS_REVIEW` result when persistence remains available. Safe structured logs contain provider, configured model, prompt version, duration, success/failure category, and token counts when returned; they contain neither credentials nor raw provider responses. Evaluation persistence separately records reasoner implementation, provider, model, and prompt version alongside suite, fixture, and policy versions.
 
 Milestone 10 adds an offline evaluation adapter around—not inside—the established triage authority path. Versioned trusted scenario data is loaded and validated separately from `ReasonerContext`; the runner invokes `TriageOrchestrator`, reads durable gateway/policy outcomes, applies transparent deterministic scoring, and persists evaluation run/case records. It cannot approve or execute actions. Scenario content cannot register tools, choose callables, replace policy, or reach the reasoner as ground truth.

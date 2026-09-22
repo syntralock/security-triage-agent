@@ -349,7 +349,11 @@ def test_happy_path_is_durable_and_reconstructable(
         }
     )
     script = [
-        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
+        ReasonerToolCall(
+            tool_name="get_user_risk",
+            arguments={"user_id": "user-alex"},
+            evidence_goal="Determine whether identity risk changes the assessment.",
+        ),
         ReasonerCandidate(
             candidate=candidate(
                 evidence_items=(expected_evidence(),),
@@ -364,6 +368,7 @@ def test_happy_path_is_durable_and_reconstructable(
     assert outcome.reason_code is OrchestrationReasonCode.COMPLETED
     assert outcome.result is not None
     assert outcome.result.actions_requiring_approval
+    assert "identity risk changes" not in outcome.result.evidence[0].summary
     assert len(fake.contexts[1].evidence) == 1
     assert {
         (target.entity_type.value, target.identifier)
@@ -379,7 +384,12 @@ def test_happy_path_is_durable_and_reconstructable(
         assert execution is not None and execution.state is TriageExecutionState.COMPLETED
         assert uow.triage_results.get_for_execution(execution.execution_id) == outcome.result
         assert len(uow.tool_invocations.list_for_execution(execution.execution_id)) == 1
-        assert len(uow.audit.list_for_target("triage_execution", execution.execution_id)) == 4
+        events = uow.audit.list_for_target("triage_execution", execution.execution_id)
+        assert len(events) == 4
+        tool_event = next(event for event in events if event.event_type == "triage.tool_invoked")
+        assert tool_event.data["evidence_goal"] == (
+            "Determine whether identity risk changes the assessment."
+        )
 
 
 @pytest.mark.parametrize(
@@ -417,7 +427,11 @@ def test_reasoner_and_tool_failures_become_durable_review(
 def test_mentioned_entity_does_not_expand_authorized_targets(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
-    request = ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-riley"})
+    request = ReasonerToolCall(
+        tool_name="get_user_risk",
+        arguments={"user_id": "user-riley"},
+        evidence_goal="Resolve risk for a merely mentioned identity.",
+    )
     service, _, fake, source = orchestrator(tmp_path, fixture_dataset, [request])
     source = source.model_copy(
         update={"description": "The narrative mentions user-riley as untrusted data."}
@@ -437,8 +451,11 @@ def test_duplicate_request_terminates_without_loop(
     request = ReasonerToolCall(
         tool_name="get_user_risk",
         arguments={"user_id": "user-alex"},
+        evidence_goal="Establish current identity risk.",
     )
-    repeated = request.model_copy()
+    repeated = request.model_copy(
+        update={"evidence_goal": "Seek the same identity risk under a different label."}
+    )
     service, factory, fake, source = orchestrator(
         tmp_path, fixture_dataset, [request, repeated, repeated]
     )
@@ -743,8 +760,16 @@ def test_total_and_per_tool_budget_exhaustion(
     tmp_path: Path, fixture_dataset: FixtureDataset
 ) -> None:
     steps = [
-        ReasonerToolCall(tool_name="get_user_risk", arguments={"user_id": "user-alex"}),
-        ReasonerToolCall(tool_name="get_mfa_events", arguments={"user_id": "user-alex"}),
+        ReasonerToolCall(
+            tool_name="get_user_risk",
+            arguments={"user_id": "user-alex"},
+            evidence_goal="Establish current risk.",
+        ),
+        ReasonerToolCall(
+            tool_name="get_mfa_events",
+            arguments={"user_id": "user-alex"},
+            evidence_goal="Check authentication challenge outcomes.",
+        ),
     ]
     service, _, _, source = orchestrator(
         tmp_path,

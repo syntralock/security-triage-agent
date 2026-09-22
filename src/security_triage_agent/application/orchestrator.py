@@ -197,7 +197,9 @@ class TriageOrchestrator:
                     gateway_context,
                 )
                 invocation = gateway_context.invocation_records[-1]
-                if not self._persist_tool(invocation, result.result):
+                if not self._persist_tool(
+                    invocation, result.result, evidence_goal=step.evidence_goal
+                ):
                     return self._persistence_failure(execution_id, correlation_id)
                 if result.status is not GatewayStatus.SUCCESS:
                     termination = (
@@ -325,7 +327,11 @@ class TriageOrchestrator:
             return False
 
     def _persist_tool(
-        self, invocation: ToolInvocationRecord, result: dict[str, object] | None
+        self,
+        invocation: ToolInvocationRecord,
+        result: dict[str, object] | None,
+        *,
+        evidence_goal: str | None,
     ) -> bool:
         stage = "persist_tool_invocation"
         try:
@@ -342,6 +348,11 @@ class TriageOrchestrator:
                             "tool_name": invocation.tool_name,
                             "authorization": invocation.authorization.value,
                             "outcome": invocation.outcome.value,
+                            **(
+                                {"evidence_goal": evidence_goal}
+                                if evidence_goal is not None
+                                else {}
+                            ),
                         },
                         outcome=(
                             AuditOutcome.SUCCESS

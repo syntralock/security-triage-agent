@@ -24,6 +24,7 @@ from security_triage_agent.adapters.reasoners.openai import (
     OpenAIReasoner,
     OpenAIReasonerError,
     OpenAIReasonerOutput,
+    OpenAIV2ReasonerOutput,
     ProviderFailureCategory,
 )
 from security_triage_agent.application.orchestration_contracts import (
@@ -495,14 +496,18 @@ def test_v2_contract_and_model_presentation_are_explicit_and_neutralized(
                 "step_type": "TOOL_CALL",
                 "tool_name": "get_user_risk",
                 "arguments": {"user_id": "user-alex"},
+                "evidence_goal": "Establish whether identity risk changes the assessment.",
             }
         }
     )
 
-    reasoner(responses, prompt_version=V2_PROMPT_VERSION).next_step(supplied)
+    step = reasoner(responses, prompt_version=V2_PROMPT_VERSION).next_step(supplied)
 
     request = responses.calls[0]
     assert request["instructions"] == V2_INSTRUCTIONS
+    assert request["text_format"] is OpenAIV2ReasonerOutput
+    assert isinstance(step, ReasonerToolCall)
+    assert step.evidence_goal == "Establish whether identity risk changes the assessment."
     sent = json.loads(str(request["input"]))
     assert sent["authorized_tool_targets"] == [{"entity_type": "USER", "identifier": "user-alex"}]
     assert sent["action_semantics"][0]["catalog_action_id"] == "revoke_sessions"
@@ -525,6 +530,86 @@ def test_v2_contract_and_model_presentation_are_explicit_and_neutralized(
     assert alert.title == "Synthetic demo test evaluation fixture alert"
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
+            }
+        },
+        {
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
+                "evidence_goal": "x" * 241,
+            }
+        },
+        {
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
+                "evidence_goal": "Resolve material identity-risk uncertainty.",
+                "authorization": "APPROVED",
+            }
+        },
+    ],
+)
+def test_v2_evidence_goal_is_required_bounded_and_non_authoritative(payload: object) -> None:
+    with pytest.raises(ValidationError):
+        OpenAIV2ReasonerOutput.model_validate(payload)
+
+
+def test_v1_schema_and_mapping_remain_without_evidence_goal(fixture_dataset: Any) -> None:
+    schema = json.dumps(OpenAIReasonerOutput.model_json_schema())
+    assert "evidence_goal" not in schema
+    assert "chain_of_thought" not in schema
+    responses = FakeResponses(
+        parsed={
+            "step": {
+                "step_type": "TOOL_CALL",
+                "tool_name": "get_user_risk",
+                "arguments": {"user_id": "user-alex"},
+            }
+        }
+    )
+    step = reasoner(responses).next_step(context(fixture_dataset.alerts[0]))
+    assert isinstance(step, ReasonerToolCall)
+    assert step.evidence_goal is None
+
+
+def test_v2_schema_has_goal_but_no_reasoning_or_authority_fields() -> None:
+    schema = OpenAIV2ReasonerOutput.model_json_schema()
+    serialized = json.dumps(schema)
+    property_names: set[str] = set()
+
+    def collect_properties(value: object) -> None:
+        if isinstance(value, dict):
+            properties = value.get("properties")
+            if isinstance(properties, dict):
+                property_names.update(properties)
+            for item in value.values():
+                collect_properties(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect_properties(item)
+
+    collect_properties(schema)
+    assert "evidence_goal" in serialized
+    for prohibited in (
+        "chain_of_thought",
+        "private_reasoning",
+        "authorization",
+        "call_id",
+        "action_id",
+    ):
+        assert prohibited not in property_names
+
+
 def test_v2_prompt_encodes_approved_reasoning_contract() -> None:
     normalized = " ".join(V2_INSTRUCTIONS.split())
     required_concepts = (
@@ -538,6 +623,7 @@ def test_v2_prompt_encodes_approved_reasoning_contract() -> None:
         "Confidence is advisory",
         "authorized_tool_targets",
         "Artificial-environment cues",
+        "evidence_goal",
     )
     assert all(concept in normalized for concept in required_concepts)
 

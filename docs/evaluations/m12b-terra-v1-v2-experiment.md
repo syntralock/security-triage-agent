@@ -64,3 +64,37 @@ scenarios and makes no claim of statistical significance, general SOC accuracy, 
 fitness.
 
 No secret, raw prompt, raw provider response, or private chain-of-thought is recorded here.
+
+## M12B.4 stopping-behavior study
+
+A preregistered four-scenario v2 study added bounded reviewer-facing `evidence_goal` metadata and
+ran `benign-known-signin`, `malicious-privileged-risk`, `insufficient-evidence-review`, and
+`typed-not-found-evidence` once each on Terra. Eighteen allowlisted, in-scope requests were made;
+each goal was durably audited without becoming evidence or affecting gateway authority.
+
+The benign case completed defensibly after three useful calls. The Riley case made five calls,
+including derivative related-alert correlation, then hit the orchestration deadline before
+returning a candidate. Each missing-evidence case made five calls and converted a material
+NOT_FOUND gap plus several empty sources into high-confidence BENIGN. Post-hoc review found five
+completed calls after the earliest defensible stopping points. The recurring pattern was coherent
+but certainty-seeking investigation: the reasoner treated any potentially informative source as
+justification for another request, did not treat NEEDS_REVIEW as successful completion, and used
+broad negative evidence as a substitute for a missing material fact.
+
+## Approved M12B.5 stopping correction
+
+The reviewed correction reframes investigation around the **minimum defensible assessment**, not
+maximum available certainty. Before requesting evidence, v2 must identify a decision-relevant
+uncertainty, a plausible result that would materially change disposition, severity, escalation,
+or minimum necessary response, and a source reasonably capable of resolving it. Mere possible
+context is insufficient. NEEDS_REVIEW is explicitly a successful bounded conclusion; material
+NOT_FOUND permits at most one targeted alternative source when it can establish the missing fact;
+empty unrelated sources cannot replace that fact. Corroboration must be decision-relevant, while
+residual severity and action uncertainty should be stated or handled with narrower proportionate
+recommendations rather than exhaustive investigation.
+
+This is a general reasoning-contract correction derived from observed stopping behavior, not a
+scenario rule or attempt to match historical labels. It names no scenario, tool, expected answer,
+or benchmark-specific evidence. Scope communication, anti-leakage presentation, ToolGateway,
+policy, approval, and execution controls remain unchanged. The correction is experimental and no
+improvement is claimed until separately tested.

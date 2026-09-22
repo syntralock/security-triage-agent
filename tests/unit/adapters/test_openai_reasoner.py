@@ -628,6 +628,27 @@ def test_v2_prompt_encodes_approved_reasoning_contract() -> None:
     assert all(concept in normalized for concept in required_concepts)
 
 
+def test_v2_prompt_encodes_minimum_defensible_stopping_contract() -> None:
+    normalized = " ".join(V2_INSTRUCTIONS.split())
+    required = (
+        "minimum defensible assessment, not maximum available certainty",
+        "what plausible result from that source would change",
+        "disposition, assessed severity, escalation, or minimum necessary response",
+        "The mere possibility of additional context is insufficient",
+        "NEEDS_REVIEW is a successful bounded conclusion",
+        "Do not exhaust tools merely because NEEDS_REVIEW remains possible",
+        "NOT_FOUND means that source cannot provide the requested fact",
+        "empty unrelated sources cannot substitute for the missing material fact",
+        "one additional targeted request",
+        "adequate resolution of material suspicious indicators",
+        "do not seek corroboration merely to increase confidence",
+        "Do not gather additional evidence solely for perfect severity certainty",
+        "Do not investigate solely to justify the strongest containment action",
+        "decision-relevant material uncertainty",
+    )
+    assert all(item in normalized for item in required)
+
+
 def test_schema_exposes_only_seven_evidence_tool_identities() -> None:
     schema = OpenAIReasonerOutput.model_json_schema()
     serialized = json.dumps(schema)

@@ -2,10 +2,35 @@ services:
   app:
     build:
       context: .
+    env_file:
+      - path: .env
+        required: false
     environment:
-      STA_ENVIRONMENT: development
-      STA_LOG_FORMAT: json
-      STA_LOG_LEVEL: INFO
+      STA_ENVIRONMENT: ${STA_ENVIRONMENT:-development}
+      STA_LOG_FORMAT: ${STA_LOG_FORMAT:-json}
+      STA_LOG_LEVEL: ${STA_LOG_LEVEL:-INFO}
+      STA_DATABASE_URL: sqlite:////data/security-triage-agent.db
+      STA_FIXTURE_PATH: ${STA_FIXTURE_PATH:-fixtures/v1}
+      STA_EVALUATION_PATH: ${STA_EVALUATION_PATH:-evaluations/v1/manifest.json}
+      STA_MAX_REQUEST_BYTES: ${STA_MAX_REQUEST_BYTES:-65536}
+      STA_APPROVAL_LIFETIME_SECONDS: ${STA_APPROVAL_LIFETIME_SECONDS:-900}
+      STA_STALE_EXECUTION_SECONDS: ${STA_STALE_EXECUTION_SECONDS:-900}
+      STA_STALE_ACTION_EXECUTION_SECONDS: ${STA_STALE_ACTION_EXECUTION_SECONDS:-300}
+      STA_REASONER_PROVIDER: ${STA_REASONER_PROVIDER:-demo}
+      STA_OPENAI_MODEL: ${STA_OPENAI_MODEL:-gpt-5.6-luna}
+      STA_OPENAI_REQUEST_TIMEOUT_SECONDS: ${STA_OPENAI_REQUEST_TIMEOUT_SECONDS:-25}
+      STA_OPENAI_MAX_OUTPUT_TOKENS: ${STA_OPENAI_MAX_OUTPUT_TOKENS:-1500}
+      STA_OPENAI_PROMPT_VERSION: ${STA_OPENAI_PROMPT_VERSION:-openai-l1-v1}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        python -m alembic upgrade head &&
+        exec uvicorn security_triage_agent.bootstrap:create_default_app
+        --factory --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:${STA_PORT:-8000}:8000"
+    volumes:
+      - sta-data:/data
     read_only: true
     init: true
     pids_limit: 100
@@ -15,3 +40,12 @@ services:
       - ALL
     tmpfs:
       - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  sta-data:

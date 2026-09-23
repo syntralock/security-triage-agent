@@ -5,7 +5,8 @@ unreviewed tree.
 
 ## Source
 
-- [ ] Git state is clean; release commit and `v1.0.0-demo` tag target are reviewed.
+- [ ] Git state is clean; the proposed release commit is reviewed; the existing
+  `v1.0.0-demo` tag is confirmed unchanged; and the public snapshot version is decided.
 - [ ] Package version `1.0.0` and release-name relationship are correct.
 
 ## Security and supply chain

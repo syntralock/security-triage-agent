@@ -1,8 +1,8 @@
 Security Triage Agent — Third-Party Notices
 
 This project depends on third-party software governed by its own license terms.
-The proprietary/all-rights-reserved notice for Security Triage Agent does not
-replace, restrict, or claim ownership of third-party software.
+The Apache License 2.0 for Security Triage Agent project source does not replace, restrict,
+or claim ownership of third-party software.
 
 The application wheel and source distribution do not bundle dependency code.
 The runtime Docker image installs the packages in requirements.lock. Their

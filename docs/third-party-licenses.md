@@ -69,7 +69,7 @@ by their own license texts and upstream terms.
 ## Review flags
 
 - **HUMAN DECISION REQUIRED:** the project owner should approve public distribution under the
-  repository's proprietary/all-rights-reserved posture and the proposed notice/source-availability
+  repository's Apache-2.0 posture and the proposed notice/source-availability
   treatment for a Docker image. This inventory does not establish legal compliance.
 
 ## Authoritative verification
@@ -107,7 +107,7 @@ These categories describe license structure; they do not determine legal compati
 - **Private repository/local use:** no public source, wheel, sdist, or image distribution occurs.
   Use alone is distinct from distribution; this review identified no unresolved artifact-delivery
   obligation for that mode.
-- **Public proprietary source repository:** the repository contains dependency declarations and
+- **Public Apache-2.0 source repository:** the repository contains dependency declarations and
   lock entries, not dependency source. The project `NOTICE` remains limited to project-owned code.
   `THIRD_PARTY_NOTICES` is advisable for transparency but does not replace upstream licenses.
 - **Application wheel:** the wheel contains only this project's code/assets and project `NOTICE`.

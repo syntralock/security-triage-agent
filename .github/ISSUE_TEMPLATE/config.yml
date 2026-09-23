@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/syntralock/security-triage-agent/security/advisories/new
+    about: Report suspected vulnerabilities privately; do not open a public issue.

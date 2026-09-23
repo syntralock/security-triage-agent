@@ -47,4 +47,4 @@ release-smoke:
 
 container-smoke:
 	docker compose build app
-	docker compose run --rm --no-deps app --check
+	docker compose run --rm --no-deps --entrypoint python app -m security_triage_agent --check

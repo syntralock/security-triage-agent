@@ -27,8 +27,8 @@ bash scripts/regenerate_locks.sh
 Regeneration resolves versions available at that time. Treat every resulting change as a
 dependency update: review the diff, package licenses, changelogs/security advisories, full tests,
 and clean-install smoke result before acceptance. The current locks combine clean Python 3.12.10
-verification with the Linux/Python 3.12 graph used by CI and release containers, not the damaged
-Codex-managed `.venv` investigated after M12C. Regeneration requires Docker so Linux-conditional
+verification with the Linux/Python 3.12 graph used by CI and release containers, not the anomalous
+cached development environment investigated before release. Regeneration requires Docker so Linux-conditional
 dependencies such as `greenlet` are included; the exact result is then verified locally.
 
 The locks use exact versions but not hashes. A portable hash lock would need hashes for every

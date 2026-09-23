@@ -5,12 +5,15 @@ build-backend = "hatchling.build"
 [project]
 name = "security-triage-agent"
 version = "1.0.0"
-description = "A bounded, auditable security alert triage agent using synthetic data."
+description = "A bounded, auditable security triage agent for self-hosted demos."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES"]
 authors = [{ name = "Security Triage Agent contributors" }]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Typing :: Typed",

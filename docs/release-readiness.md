@@ -1,35 +1,37 @@
 # Release readiness
 
-Status: M12D release-candidate review, 2026-09-22.
+Status: M12E open-source release preparation, 2026-09-22.
 
 ## Local/portfolio demo release
 
-Target release name and Git tag: `v1.0.0-demo`. Python package version: `1.0.0`. The tag uses a
-human-readable demo suffix; package metadata uses the stable PEP 440 version. Tagging and artifact
-distribution require separate human approval.
+The existing `v1.0.0-demo` Git tag points to the M12D engineering checkpoint. Python package
+version: `1.0.0`. M12E changes intentionally do not move, replace, or create a tag. A human must
+decide how the eventual public source snapshot will be versioned after reviewing these changes.
+Artifact distribution requires separate human approval.
 
 The release candidate is evaluated for reproducibility, clean installability, the complete local
 workflow, bounded security controls, documentation, repeatability, and known limitations. It is a
 synthetic-data portfolio demonstration, not a production security service.
 
-Resolved M12D gates include an explicit proprietary/all-rights-reserved notice, exact Python 3.12
+Resolved release gates include an Apache-2.0 project license, exact Python 3.12
 runtime and development locks, reviewed immutable GitHub Action pins, packaged templates, typing
 metadata, and migrations, a clean wheel-install application smoke test, and a release checklist.
 Third-party license metadata is inventoried separately.
 
 Remaining local/demo decisions:
 
-- **HUMAN DECISION REQUIRED:** approve the proprietary public-distribution posture and the
+- **HUMAN DECISION REQUIRED:** confirm final Apache-2.0 adoption and the
   `THIRD_PARTY_NOTICES`/MPL license-and-source preservation plan documented in
   `docs/third-party-licenses.md`, particularly before distributing a Docker image.
-- **HUMAN DECISION REQUIRED:** approve the release commit, artifact distribution channel, and
-  creation of the `v1.0.0-demo` tag.
+- **HUMAN DECISION REQUIRED:** approve the release commit and artifact distribution channel, and
+  decide how to version the public source snapshot because the existing `v1.0.0-demo` tag predates
+  M12E. Do not move or replace that tag as part of this milestone.
 - A formal assistive-technology audit has not been performed.
 - The demonstration uses synthetic fixture ingestion and a fixed local reviewer identity.
 - `openai-l1-v2` remains experimental/advisory; the deterministic reasoner is the repeatable default.
 
-Recommendation: **ready for human release review once all automated M12D verification passes;
-do not tag or distribute until the human decisions above are recorded.**
+Recommendation: **ready for human release review once all automated M12E verification passes;
+do not commit, tag, publish, or distribute until the human decisions above are recorded.**
 
 ## Production release
 

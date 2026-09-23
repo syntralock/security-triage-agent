@@ -1,13 +1,9 @@
-Security Triage Agent — Proprietary / All Rights Reserved
+Security Triage Agent
 
-Copyright (c) 2026 Security Triage Agent contributors.
+Copyright 2026 Security Triage Agent contributors
 
-All rights are reserved. No permission is granted to copy, modify, distribute,
-sublicense, or use this source code except as expressly authorized in writing by
-the copyright owner.
+This product includes software developed by Security Triage Agent contributors and is
+licensed under the Apache License, Version 2.0. See LICENSE.
 
 Third-party dependencies and components remain governed by their respective
 licenses. This notice does not claim ownership of those third-party materials.
-
-This licensing posture may be replaced only by an explicit, reviewed change by
-the project owner.

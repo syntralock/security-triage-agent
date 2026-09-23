@@ -127,4 +127,5 @@ Tests mirror these boundaries:
 
 Keep fixtures outside package code so their versions and licensing/synthetic status are obvious. Avoid a broad `utils.py`; place behavior with the concept that owns it.
 
-The repository intentionally has no license file during internal development. A license and any corresponding repository metadata will be selected during the Milestone 12 public-release review.
+Security Triage Agent project source is licensed under Apache-2.0. Third-party components retain their own
+licenses and notices.
